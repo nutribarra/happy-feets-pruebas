@@ -42,13 +42,41 @@ const HF_ENGINE_B64='PCFkb2N0eXBlIGh0bWw+PGh0bWwgbGFuZz0iZXMiPjxoZWFkPjxtZXRhIGN
 const HF_MOVES={hf:'hipFlex',he:'hipExt',ha:'hipAbd',hd:'hipAdd',kf:'kneeFlex',ke:'kneeExt',df:'ankleDorsi',fpb:'plantarBi',fpu:'plantarUni'};
 let hfLatest=null;
 function hfEngineHtml(){return new TextDecoder().decode(Uint8Array.from(atob(HF_ENGINE_B64),c=>c.charCodeAt(0)))}
+function hfPoseIllustration(t,goal){
+ const id=t.moveId,front=['ha','hd'].includes(id),side=t.side==='Izquierda'?-1:1;
+ const p=(x,y)=>[x,y],hip=front?p(110,125):p(104,125);
+ let knee=front?p(124,193):p(112,193),ankle=front?p(125,265):p(112,265);
+ if(id==='ke'){knee=p(161,128);ankle=goal?p(218,127):p(164,191)}
+ if(goal){
+  if(id==='hf'){knee=p(179,130);ankle=p(179,195)}
+  if(id==='he'){knee=p(58,164);ankle=p(45,232)}
+  if(id==='ha'){knee=p(174,179);ankle=p(210,250)}
+  if(id==='hd'){knee=p(73,186);ankle=p(60,255)}
+  if(id==='kf'){knee=p(113,194);ankle=p(57,161)}
+  if(id==='df'){knee=p(151,177);ankle=p(117,263)}
+  if(id==='fpb'||id==='fpu'){knee=p(113,184);ankle=p(114,252)}
+ }
+ const flip=side<0&&!front?'translate(220 0) scale(-1 1)':'';
+ const limb=(x1,y1,x2,y2,color,w)=>'<path d="M'+x1+' '+y1+' L'+x2+' '+y2+'" fill="none" stroke="'+color+'" stroke-width="'+w+'" stroke-linecap="round"/>';
+ const body='#335d5b',active='#0e9b86';
+ const otherK=front?p(91,193):p(93,193),otherA=front?p(89,265):p(93,265);
+ const foot=(a,activeLeg)=>'<path d="M'+a[0]+' '+a[1]+' l'+(front?9:24)+' 0" stroke="'+(activeLeg?active:body)+'" stroke-width="9" stroke-linecap="round"/>';
+ const torso='<path d="M100 58 Q86 73 90 96 L94 124 Q108 136 119 123 L122 96 Q123 72 110 58 Z" fill="#74bcb2" stroke="#335d5b" stroke-width="2"/>';
+ const figure='<circle cx="105" cy="38" r="18" fill="#edbd9a" stroke="#335d5b" stroke-width="2"/><path d="M88 33 Q89 12 108 16 Q124 18 124 38 L117 28 Q103 23 89 35Z" fill="#293d3d"/>'+torso+
+ limb(94,74,74,124,body,12)+limb(118,75,134,122,body,12)+
+ limb(98,126,otherK[0],otherK[1],body,13)+limb(otherK[0],otherK[1],otherA[0],otherA[1],body,12)+foot(otherA,false)+
+ limb(110,126,knee[0],knee[1],active,14)+limb(knee[0],knee[1],ankle[0],ankle[1],active,12)+foot(ankle,true)+
+ '<circle cx="'+knee[0]+'" cy="'+knee[1]+'" r="5" fill="#fff" stroke="'+active+'" stroke-width="3"/>';
+ const arrow=goal?'<path d="M166 231 Q205 193 198 147" fill="none" stroke="#c68c20" stroke-width="3" stroke-dasharray="6 5"/><path d="M191 154 L198 145 L204 155" fill="none" stroke="#c68c20" stroke-width="3"/>':'';
+ return '<svg viewBox="0 0 220 295" role="img" aria-label="'+(goal?'Posición objetivo':'Posición inicial')+' para '+esc(t.name)+'" style="width:100%;height:230px;max-width:100%;display:block;margin:auto"><rect x="1" y="1" width="218" height="293" rx="12" fill="#f4f8f7"/><path d="M15 279 H205" stroke="#b3c9c6" stroke-width="2"/><g transform="'+flip+'">'+figure+arrow+'</g></svg>';
+}
 function hfPreparationView(){
  const t=session?.tests[index];if(!t)return home();
  const images=db.settings.exerciseImages!==false,description=db.settings.exerciseDescription!==false;
  if(!images&&!description)return assessmentView();
- const instructions={hf:'Eleva la rodilla hacia delante manteniendo el tronco estable.',he:'Lleva la pierna hacia atrás evitando arquear la espalda.',ha:'Separa la pierna hacia el costado manteniendo la pelvis estable.',hd:'Cruza la pierna por delante del cuerpo sin girar la pelvis.',kf:'Flexiona la rodilla llevando el talón hacia atrás.',ke:'Con el muslo elevado, extiende la rodilla de manera controlada.',df:'Con el talón apoyado, desplaza la rodilla hacia delante.',fpb:'Eleva ambos talones y vuelve a apoyarlos.',fpu:'Eleva el talón del lado evaluado y vuelve a apoyarlo.'};
- const diagram=images?'<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0"><div class="tip" style="text-align:center"><strong>Posición inicial</strong><div style="font-size:70px">🧍</div><p class="tiny">Postura de referencia</p></div><div class="tip" style="text-align:center"><strong>Posición objetivo</strong><div style="font-size:70px">🦵</div><p class="tiny">Movimiento indicado</p></div></div><p class="tiny muted">Referencias provisionales. Las ilustraciones anatómicas específicas están pendientes.</p>':'';
- html('<div class="headrow"><div><span class="eyebrow muted">Preparación · Prueba '+(index+1)+' de '+session.tests.length+'</span><h1>'+esc(t.name)+' · '+esc(t.side)+'</h1></div></div><div class="card" style="max-width:780px;margin:auto"><h2>Antes de comenzar</h2>'+diagram+(description?'<p>'+esc(instructions[t.moveId]||'Realiza el movimiento de manera lenta y controlada.')+'</p>':'')+'<p class="muted">Cuando estés preparado, iniciaremos la cámara y la calibración automáticamente.</p><button class="btn primary" onclick="assessmentView()">Estoy listo · Comenzar →</button> <button class="btn" onclick="hfSaveProgress()">Guardar y salir</button></div>');
+ const instructions={hf:'De pie y de perfil, eleva la rodilla hacia delante mediante flexión de cadera; mantén el tronco estable. Se permite flexionar la rodilla.',he:'De pie y de perfil, lleva la pierna hacia atrás evitando arquear excesivamente la zona lumbar.',ha:'De pie y de frente, separa lateralmente la pierna sin inclinar el tronco ni desplazar excesivamente la pelvis.',hd:'De pie y de frente, cruza la pierna por delante del cuerpo sin girar la pelvis.',kf:'De pie y de perfil, flexiona la rodilla llevando el talón hacia atrás, evitando desplazar excesivamente el muslo.',ke:'Con el muslo elevado y la rodilla inicialmente flexionada, extiende la rodilla sin bajar el muslo.',df:'De perfil, con el pie apoyado, desplaza la rodilla hacia delante sin levantar el talón.',fpb:'De pie, eleva ambos talones de forma controlada y vuelve a apoyarlos.',fpu:'De pie, eleva el talón de la pierna evaluada; utiliza apoyo estable si es necesario.'};
+ const diagram=images?'<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:16px 0"><div class="tip" style="text-align:center"><strong>Posición inicial</strong>'+hfPoseIllustration(t,false)+'</div><div class="tip" style="text-align:center"><strong>Posición objetivo</strong>'+hfPoseIllustration(t,true)+'</div></div><p class="tiny muted">Esquemas anatómicos orientativos en desarrollo; no representan un rango obligatorio ni sustituyen instrucciones profesionales.</p>':'';
+ html('<div class="headrow"><div><span class="eyebrow muted">Preparación · Prueba '+(index+1)+' de '+session.tests.length+'</span><h1>'+esc(t.joint)+' · '+esc(t.name)+' · '+esc(t.side)+'</h1></div></div><div class="card" style="max-width:780px;margin:auto"><h2>Antes de comenzar</h2>'+diagram+(description?'<p>'+esc(instructions[t.moveId]||'Realiza el movimiento de manera lenta y controlada.')+'</p>':'')+'<p class="muted">Al pulsar comenzar se iniciarán la cámara y la calibración automáticamente.</p><button class="btn primary" onclick="assessmentView()">Estoy listo · Comenzar →</button> <button class="btn" onclick="hfSaveProgress()">Guardar y salir</button></div>');
 }
 function hfLoadTest(){let t=session.tests[index],frame=document.getElementById('hfEngine');if(!t||!frame)return;hfLatest=null;frame.srcdoc=hfEngineHtml();frame.onload=()=>{try{let d=frame.contentDocument;d.getElementById('movement').value=HF_MOVES[t.moveId];d.getElementById('side').value=t.side==='Izquierda'?'left':'right';let target=d.getElementById('target'),reps=t.reps; if(![...target.options].some(o=>+o.value===reps)){let opt=d.createElement('option');opt.value=String(reps);opt.textContent=String(reps);target.appendChild(opt)}target.value=String(reps);d.getElementById('movement').dispatchEvent(new Event('change'));d.getElementById('target').dispatchEvent(new Event('change'));hfAutoPrepare(frame);}catch(e){console.warn('No se pudo preparar prueba',e)}}}
 function hfAutoPrepare(frame){
