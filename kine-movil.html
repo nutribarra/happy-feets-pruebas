@@ -119,6 +119,31 @@ function stabilizePoint(p,i,side){
  return {...p,x,y,source,confidence};
 }
 
+// Reject detections outside the limb geometry before they reach the temporal filter.
+function anatomicalCandidate(match,p,i,posePoints,side){
+ if(!match)return null;
+ const prior=stableTracks[side][i];
+ const near=posePoints[i];
+ const dx=match.x-near.x,dy=match.y-near.y;
+ const poseDistance=Math.hypot(dx,dy);
+ // A wall-coloured object cannot be accepted as a knee/ankle/foot marker.
+ const limits=[.065,.065,.055,.055,.065];
+ if(poseDistance>limits[i])return null;
+ if(prior){
+  const poseTravel=Math.hypot(near.x-prior.poseX,near.y-prior.poseY);
+  const predicted={x:prior.x+near.x-prior.poseX,y:prior.y+near.y-prior.poseY};
+  const allowance=Math.max(.035,Math.min(.085,poseTravel*1.8+.025));
+  if(Math.hypot(match.x-predicted.x,match.y-predicted.y)>allowance)return null;
+ }
+ // Limb-segment proximity: the knee must remain near the hip-to-ankle corridor.
+ if(i===2&&posePoints[1]&&posePoints[3]){
+  const hip=posePoints[1],ankle=posePoints[3];
+  const vx=ankle.x-hip.x,vy=ankle.y-hip.y;
+  const t=Math.max(0,Math.min(1,((match.x-hip.x)*vx+(match.y-hip.y)*vy)/(vx*vx+vy*vy+1e-8)));
+  if(Math.hypot(match.x-(hip.x+t*vx),match.y-(hip.y+t*vy))>.11)return null;
+ }
+ return match;
+}
 function resetShoulderHybrid(side){shoulderHybrid[side]={offset:null,last:null,pose:null};}
 function hybridShoulder(p,match,side){
  const state=shoulderHybrid[side],pose={x:p.x,y:p.y};
@@ -193,8 +218,8 @@ function detectOrangeMarkers(video,landmarks,side){
    if(used.has(j))continue;
    const c=candidates[j],poseDist=p?Math.hypot((c.x-p.x)*cw,(c.y-p.y)*ch):Infinity;
    const priorDist=prev?Math.hypot((c.x-prev.x)*cw,(c.y-prev.y)*ch):0;
-   const radius=Math.max(14,Math.min(cw,ch)*.045);
-   if(poseDist>radius*.9 || (prev&&priorDist>radius))continue;
+   const radius=Math.max(12,Math.min(cw,ch)*.035);
+   if(poseDist>radius*.8 || (prev&&priorDist>radius*1.4))continue;
    const score=poseDist*.65+priorDist*.35;
    if(score<bestScore){best=j;bestScore=score;}
   }
@@ -216,7 +241,7 @@ async function loadAutoPose(){
    const values=landmarks?landmarkIndices[autoSide].map((id,i)=>({name:landmarkNames[i],x:landmarks[id].x,y:landmarks[id].y,visibility:landmarks[id].visibility??1})):null;
    const matches=values?detectOrangeMarkers(currentAnalysisVideo,landmarks,autoSide):[];
    const points=values?values.map((p,i)=>{
-    const match=matches[i];
+    const match=anatomicalCandidate(matches[i],p,i,values,autoSide);
     let selected;
     if(i===0)selected=hybridShoulder(p,match,autoSide);
     else if(match)selected={...p,x:match.x,y:match.y,source:'orange-candidate',confidence:'unverified'};
