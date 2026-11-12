@@ -87,6 +87,7 @@ const analysisVideos={right:document.getElementById('preview-right'),left:docume
 let currentAnalysisVideo=autoVideo;
 let autoPose=null,autoCancelled=false,autoRunning=false,autoSide='right',autoTime=0;
 const reviewFlags={right:[],left:[]};
+// Physical marker matches are provisional; MediaPipe-only points require review.
 const markerStats={right:{physical:0,estimated:0},left:{physical:0,estimated:0}};
 const markerCanvas=document.createElement('canvas'),markerCtx=markerCanvas.getContext('2d',{willReadFrequently:true});
 const lastMarker={right:Array(5).fill(null),left:Array(5).fill(null)};
@@ -94,7 +95,7 @@ function detectOrangeMarkers(video,landmarks,side){
  const w=video.videoWidth,h=video.videoHeight;
  if(!w||!h||!landmarks)return [];
  // Search the near-camera marked limb; use prior marker positions before MediaPipe.
- const scale=Math.min(1,960/w,720/h),cw=Math.round(w*scale),ch=Math.round(h*scale);
+ const scale=Math.min(1,1280/w,960/h),cw=Math.round(w*scale),ch=Math.round(h*scale);
  markerCanvas.width=cw;markerCanvas.height=ch;markerCtx.drawImage(video,0,0,cw,ch);
  const pixels=markerCtx.getImageData(0,0,cw,ch).data;
  const mask=new Uint8Array(cw*ch),visited=new Uint8Array(cw*ch);
@@ -115,7 +116,7 @@ function detectOrangeMarkers(video,landmarks,side){
    }
   }
   const bw=maxX-minX+1,bh=maxY-minY+1,aspect=bw/bh,fill=tail/(bw*bh);
-  if(tail>=8&&tail<=cw*ch*.003&&aspect>.65&&aspect<1.5&&fill>.45&&fill<.94){
+  if(tail>=6&&tail<=cw*ch*.003&&aspect>.55&&aspect<1.65&&fill>.35&&fill<.96){
    const cx=sumX/tail,cy=sumY/tail,rad=Math.max(bw,bh)*.55;
    // Reject wall patches: expect a darker outline around the orange region.
    let dark=0,valid=0;
@@ -125,20 +126,20 @@ function detectOrangeMarkers(video,landmarks,side){
     const ix=(yy*cw+xx)*4,R=pixels[ix],G=pixels[ix+1],B=pixels[ix+2];
     valid++;if(Math.max(R,G,B)<125)dark++;
    }
-   if(valid>=10&&dark/valid>=.18)candidates.push({x:cx/cw,y:cy/ch,area:tail});
+   if(valid>=10&&dark/valid>=.12)candidates.push({x:cx/cw,y:cy/ch,area:tail});
   }
  }
  const ids=landmarkIndices[side],used=new Set(),previous=lastMarker[side];
  return ids.map((id,i)=>{
-  const p=landmarks[id],prev=previous[i];if(!p)return null;
+  const p=landmarks[id],prev=previous[i];if(!p&&!prev)return null;
   let best=-1,bestScore=Infinity;
   for(let j=0;j<candidates.length;j++){
    if(used.has(j))continue;
-   const c=candidates[j],poseDist=Math.hypot((c.x-p.x)*cw,(c.y-p.y)*ch);
+   const c=candidates[j],poseDist=p?Math.hypot((c.x-p.x)*cw,(c.y-p.y)*ch):Infinity;
    const priorDist=prev?Math.hypot((c.x-prev.x)*cw,(c.y-prev.y)*ch):0;
    const radius=Math.max(20,Math.min(cw,ch)*.09);
-   if(poseDist>radius*1.5||(prev&&priorDist>radius))continue;
-   const score=poseDist*.4+priorDist*.6;
+   if(prev?priorDist>radius:poseDist>radius*.85)continue;
+   const score=prev?priorDist:poseDist;
    if(score<bestScore){best=j;bestScore=score;}
   }
   if(best<0)return null;
@@ -191,7 +192,7 @@ async function prepareAutoVideo(side){
  const v=analysisVideos[side];currentAnalysisVideo=v;
  v.muted=true;v.playsInline=true;v.preload='auto';
  if(!urls[side])urls[side]=URL.createObjectURL(file);
- if(!v.src||v.src!==urls[side]){v.src=urls[side];v.load();}
+ if(!v.src||v.src!==urls[side]||v.error){v.removeAttribute('src');v.load();v.src=urls[side];v.load();}
  // Reuse the preview already decoded by Android instead of opening a hidden decoder.
  if(v.readyState<1)await waitForEvent(v,'loadedmetadata',30000);
  if(!Number.isFinite(v.duration)||v.duration<=0)throw Error('Duración de video no válida.');
@@ -294,7 +295,12 @@ async function startAutoAnalysis(){
    try{
     autoState(side,'Cargando video…');
     autoMessage('Preparando extremidad '+(side==='right'?'derecha':'izquierda')+'…');
-    const duration=await prepareAutoVideo(side);
+    let duration;
+     try{duration=await prepareAutoVideo(side);}catch(e){
+       // Retry a fresh decoder for intermittent Android video errors.
+       const v=analysisVideos[side];v.removeAttribute('src');v.load();
+       duration=await prepareAutoVideo(side);
+     }
     const count=Math.min(600,Math.max(1,Math.ceil(duration*10)));
     for(let i=0;i<count;i++){
      if(autoCancelled)throw Error('Análisis interrumpido.');
