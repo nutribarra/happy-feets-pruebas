@@ -83,9 +83,8 @@ const capturedPoints={right:[],left:[]};
 const landmarkIndices={right:[12,24,26,28,32],left:[11,23,25,27,31]};
 const landmarkNames=['hombro','cadera','rodilla','tobillo','pie'];
 const autoVideo=document.getElementById('auto-video');
-const analysisVideos={right:document.createElement('video'),left:document.createElement('video')};
+const analysisVideos={right:document.getElementById('preview-right'),left:document.getElementById('preview-left')};
 let currentAnalysisVideo=autoVideo;
-for(const v of Object.values(analysisVideos)){v.muted=true;v.playsInline=true;v.preload='auto';v.style.cssText='position:absolute;width:1px;height:1px;opacity:0;pointer-events:none';document.body.appendChild(v);}
 let autoPose=null,autoCancelled=false,autoRunning=false,autoSide='right',autoTime=0;
 const reviewFlags={right:[],left:[]};
 const markerStats={right:{physical:0,estimated:0},left:{physical:0,estimated:0}};
@@ -177,12 +176,13 @@ function waitForEvent(el,event,timeout=30000){
 async function prepareAutoVideo(side){
  const file=document.getElementById('file-'+side).files?.[0];
  if(!file)throw Error('No se encontró el video '+side+'.');
- if(!urls[side])urls[side]=URL.createObjectURL(file);
  const v=analysisVideos[side];currentAnalysisVideo=v;
- if(v.src!==urls[side]){v.src=urls[side];v.load();}
- await waitForEvent(v,'loadedmetadata',30000);
+ v.muted=true;v.playsInline=true;v.preload='auto';
+ if(!urls[side])urls[side]=URL.createObjectURL(file);
+ if(!v.src||v.src!==urls[side]){v.src=urls[side];v.load();}
+ // Reuse the preview already decoded by Android instead of opening a hidden decoder.
+ if(v.readyState<1)await waitForEvent(v,'loadedmetadata',30000);
  if(!Number.isFinite(v.duration)||v.duration<=0)throw Error('Duración de video no válida.');
- if(v.readyState<2)await waitForEvent(v,'loadeddata',30000);
  return v.duration;
 }
 async function seekAuto(time){
@@ -191,7 +191,11 @@ async function seekAuto(time){
  const promise=waitForEvent(v,'seeked',30000);
  v.currentTime=time;
  await promise;
- if(v.readyState<2)await waitForEvent(v,'loadeddata',30000);
+ // Android may report seeked before the first decoded frame is available.
+ if(v.readyState<2){
+  try{await waitForEvent(v,'loadeddata',8000);}
+  catch(e){if(v.readyState<2)throw Error('El video no entrega fotogramas decodificados: '+e.message);}
+ }
 }
 function renderReview(){
  const root=document.getElementById('review-list');root.replaceChildren();
@@ -239,13 +243,15 @@ async function startAutoAnalysis(){
    }catch(err){
     failures.push((side==='right'?'Derecha':'Izquierda')+': '+err.message);
     autoState(side,'Error · '+err.message);
-    document.getElementById('auto-progress').value=(si+1)*50;
+    document.getElementById('auto-progress').value=si*50;
    }
   }
+  const totalFrames=capturedPoints.right.length+capturedPoints.left.length;
   if(autoCancelled)autoMessage('Análisis interrumpido.');
-  else if(failures.length)autoMessage('Procesamiento parcial. '+failures.join(' | ')+'. Los datos de la otra extremidad se conservan.');
+  else if(!totalFrames)autoMessage('No se procesaron fotogramas. '+failures.join(' | ')+'. Vuelve a seleccionar los videos o comprueba su formato.');
+  else if(failures.length)autoMessage('Procesamiento parcial. '+failures.join(' | ')+'. Los fotogramas obtenidos se conservan.');
   else autoMessage('Seguimiento automático de ambas extremidades completado.');
-  if(!autoCancelled){renderReview();document.getElementById('auto-finish').classList.remove('hidden');}
+  if(!autoCancelled&&totalFrames>0){renderReview();document.getElementById('auto-finish').classList.remove('hidden');}
  }catch(err){autoMessage('No se pudo iniciar MediaPipe: '+err.message);}
  finally{autoRunning=false;document.getElementById('auto-retry').classList.remove('hidden');}
 }
