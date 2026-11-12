@@ -31,7 +31,7 @@
 <p class="muted">Valores de ejemplo, no calculados a partir de los videos cargados.</p>
 <div id="joint-cards"></div>
 <div class="panel"><h3>Variables espaciotemporales</h3><div class="two"><div class="card"><strong>Longitud del paso derecho</strong><span>0,48 m</span></div><div class="card"><strong>Longitud del paso izquierdo</strong><span>0,62 m</span></div></div><p class="muted">Diferencia entre lados: 0,14 m</p><div class="card"><strong>Velocidad de marcha habitual</strong>0,82 m/s</div><details><summary>Ver mediciones individuales</summary><table><thead><tr><th>Paso</th><th>Derecho</th><th>Izquierdo</th></tr></thead><tbody><tr><td>1</td><td>0,47 m</td><td>0,61 m</td></tr><tr><td>2</td><td>0,49 m</td><td>0,63 m</td></tr><tr><td>3</td><td>0,48 m</td><td>0,62 m</td></tr></tbody></table></details></div>
-<div class="actions"><button class="secondary" data-back="analysis">Volver</button><button class="secondary" id="restart">Nueva evaluación</button></div>
+<div class="actions"><button class="secondary" data-back="analysis">Volver</button><button id="download-excel">Descargar resultados en Excel</button><button class="secondary" id="restart">Nueva evaluación</button></div>
 </section>
 <footer>kineRoom · Prototipo experimental. Las mediciones cinemáticas y espaciotemporales requerirán calibración y validación antes de su uso clínico.</footer>
 </main>
@@ -58,4 +58,50 @@ let grid='';for(let i=0;i<=4;i++){let v=j.min+(j.max-j.min)*i/4,y=175-i*35;grid+
 for(let i=0;i<=3;i++){let x=45+i*290/3;grid+='<line x1="'+x+'" x2="'+x+'" y1="30" y2="175" stroke="#9eaaa6" stroke-dasharray="4 4"/><text x="'+x+'" y="194" text-anchor="middle" font-size="10" fill="#688078">'+(i*1.1).toFixed(1)+' s</text>';if(i<3)grid+='<text x="'+(x+290/6)+'" y="23" text-anchor="middle" font-size="11" fill="#49675f">Ciclo '+(i+1)+'</text>';}
 return '<svg viewBox="0 0 350 220" role="img" aria-label="Curvas angulares ficticias de '+j.name+'" style="width:100%;max-width:760px"><text x="45" y="11" font-size="10" fill="#688078">Ángulo (°)</text>'+grid+'<path d="'+path(j.right,j.ro)+'" fill="none" stroke="#df7957" stroke-width="2.7"/><path d="'+path(j.left,j.lo)+'" fill="none" stroke="#3787bc" stroke-width="2.7"/><text x="190" y="215" text-anchor="middle" font-size="11" fill="#688078">Tiempo (s)</text></svg>';}
 document.getElementById('joint-cards').innerHTML=joints.map(j=>{const r=metric(j.right,j.ro),l=metric(j.left,j.lo);return '<div class="panel"><h3>'+j.name+' · Ángulo en el tiempo</h3><p class="muted"><span style="color:#df7957">●</span> Derecha &nbsp; <span style="color:#3787bc">●</span> Izquierda</p>'+svg(j)+'<p class="muted">Promedios de 3 ciclos ficticios</p><table><thead><tr><th>Medición</th><th>Derecha</th><th>Izquierda</th></tr></thead><tbody>'+j.labels.map((name,i)=>'<tr><td>'+name+'</td><td>'+avg(r,i)+'</td><td>'+avg(l,i)+'</td></tr>').join('')+'</tbody></table><details><summary>Ver resultados por ciclo</summary><div class="two">'+[['Derecha',r],['Izquierda',l]].map(([side,m])=>'<div><h4>'+side+'</h4><table><thead><tr><th>Medición</th><th>C1</th><th>C2</th><th>C3</th></tr></thead><tbody>'+j.labels.map((label,i)=>'<tr><td>'+label+'</td>'+m.map(row=>'<td>'+row[i]+'°</td>').join('')+'</tr>').join('')+'</tbody></table></div>').join('')+'</div></details></div>';}).join('');
-</script></body></html>
+
+async function downloadExcel(){
+ const btn=document.getElementById('download-excel');btn.disabled=true;btn.textContent='Preparando Excel…';
+ try{
+  if(!window.ExcelJS)throw Error('No se pudo cargar la biblioteca de Excel. Revisa tu conexión.');
+  const wb=new ExcelJS.Workbook();wb.creator='kineRoom';wb.subject='Resultados simulados de análisis de marcha';
+  const summary=wb.addWorksheet('Resumen'),cycles=wb.addWorksheet('Por ciclo'),curves=wb.addWorksheet('Curvas - datos');
+  const title=(sh,row,text)=>{sh.mergeCells(row,1,row,5);let c=sh.getCell(row,1);c.value=text;c.font={bold:true,size:15,color:{argb:'FF176454'}};c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFE8F4EF'}};sh.getRow(row).height=26;};
+  const header=(sh,row,values)=>{values.forEach((v,i)=>{const c=sh.getCell(row,i+1);c.value=v;c.font={bold:true,color:{argb:'FFFFFFFF'}};c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF176454'}};c.alignment={wrapText:true};});sh.getRow(row).height=27;};
+  for(const sh of [summary,cycles,curves]){sh.columns=[{width:28},{width:22},{width:22},{width:22},{width:22},{width:20}];sh.views=[{state:'frozen',ySplit:2}];}
+  title(summary,1,'kineRoom · Resumen de marcha');summary.getCell('A2').value='DEMOSTRACIÓN — DATOS FICTICIOS, NO DERIVADOS DE LOS VIDEOS';summary.getCell('A2').font={bold:true,color:{argb:'FFAE5B30'}};
+  let sr=4,cr=1,dr=1;
+  for(const j of joints){
+    const r=metric(j.right,j.ro),l=metric(j.left,j.lo);
+    title(summary,sr,j.name+' · Promedios articulares');header(summary,sr+1,['Medición','Derecha (°)','Izquierda (°)']);
+    j.labels.forEach((label,i)=>{summary.getRow(sr+2+i).values=[label,Number((r.reduce((a,v)=>a+v[i],0)/r.length).toFixed(2)),Number((l.reduce((a,v)=>a+v[i],0)/l.length).toFixed(2))];});
+    title(cycles,cr,j.name+' · Resultados por ciclo');header(cycles,cr+1,['Medición','Derecha C1','Derecha C2','Derecha C3','Prom. derecha']);
+    j.labels.forEach((label,i)=>cycles.getRow(cr+2+i).values=[label,...r.map(v=>v[i]),Number((r.reduce((a,v)=>a+v[i],0)/r.length).toFixed(2))]);
+    header(cycles,cr+6,['Medición','Izquierda C1','Izquierda C2','Izquierda C3','Prom. izquierda']);
+    j.labels.forEach((label,i)=>cycles.getRow(cr+7+i).values=[label,...l.map(v=>v[i]),Number((l.reduce((a,v)=>a+v[i],0)/l.length).toFixed(2))]);
+    cr+=13;
+    title(curves,dr,j.name+' · Curvas angulares');header(curves,dr+1,['Tiempo derecho (s)','Derecha (°)','Tiempo izquierdo (s)','Izquierda (°)']);
+    for(let k=0;k<3;k++)for(let i=0;i<j.right.length;i++){let row=dr+2+k*j.right.length+i;curves.getRow(row).values=[Number((k*1.1+i*.11).toFixed(3)),j.right[i]+j.ro[k],Number((k*1.1+i*.11).toFixed(3)),j.left[i]+j.lo[k]];}
+    dr+=38;
+    // Gráfico de curvas en la hoja Resumen, como imagen estática exportable.
+    const canvas=document.createElement('canvas');canvas.width=900;canvas.height=330;const ctx=canvas.getContext('2d');
+    ctx.fillStyle='#ffffff';ctx.fillRect(0,0,900,330);ctx.font='bold 19px sans-serif';ctx.fillStyle='#173d39';ctx.fillText(j.name+' · Ángulo (°) vs tiempo (s)',45,30);
+    const x0=62,y0=270,w=790,h=205;
+    ctx.font='12px sans-serif';ctx.textAlign='right';
+    for(let n=0;n<=4;n++){const val=j.min+(j.max-j.min)*n/4,y=y0-n*h/4;ctx.strokeStyle='#dce8e4';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x0,y);ctx.lineTo(x0+w,y);ctx.stroke();ctx.fillStyle='#647d75';ctx.fillText(Math.round(val)+'°',x0-8,y+4);}
+    for(let n=0;n<=3;n++){const x=x0+n*w/3;ctx.strokeStyle='#9eaaa6';ctx.setLineDash([5,5]);ctx.beginPath();ctx.moveTo(x,55);ctx.lineTo(x,y0);ctx.stroke();ctx.setLineDash([]);ctx.textAlign='center';ctx.fillStyle='#647d75';ctx.fillText((n*1.1).toFixed(1)+' s',x,y0+19);if(n<3)ctx.fillText('Ciclo '+(n+1),x+w/6,51);}
+    const draw=(arr,offs,color)=>{ctx.strokeStyle=color;ctx.lineWidth=3;ctx.beginPath();offs.forEach((o,k)=>arr.forEach((v,i)=>{const x=x0+(k*1.1+i*.11)/3.3*w,y=y0-(v+o-j.min)/(j.max-j.min)*h;if(k===0&&i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}));ctx.stroke();};
+    draw(j.right,j.ro,'#df7957');draw(j.left,j.lo,'#3787bc');ctx.textAlign='left';ctx.font='13px sans-serif';ctx.fillStyle='#df7957';ctx.fillText('● Derecha',660,30);ctx.fillStyle='#3787bc';ctx.fillText('● Izquierda',755,30);
+    const id=wb.addImage({base64:canvas.toDataURL('image/png'),extension:'png'});summary.addImage(id,{tl:{col:0,row:sr+5},ext:{width:790,height:290}});
+    sr+=24;
+  }
+  title(summary,sr,'Variables espaciotemporales');header(summary,sr+1,['Variable','Valor','Unidad']);
+  [['Longitud del paso derecho',0.48,'m'],['Longitud del paso izquierdo',0.62,'m'],['Diferencia entre lados',0.14,'m'],['Velocidad de marcha habitual',0.82,'m/s']].forEach((a,i)=>summary.getRow(sr+2+i).values=a);
+  title(cycles,cr,'Variables espaciotemporales');header(cycles,cr+1,['Paso','Derecha (m)','Izquierda (m)']);
+  [[1,.47,.61],[2,.49,.63],[3,.48,.62]].forEach((a,i)=>cycles.getRow(cr+2+i).values=a);
+  cycles.getRow(cr+6).values=['Promedio',.48,.62];cycles.getRow(cr+8).values=['Velocidad habitual (m/s)',.82];cycles.getRow(cr+9).values=['Distancia de ejemplo (m)',4.10];cycles.getRow(cr+10).values=['Tiempo de ejemplo (s)',5.00];
+  const data=await wb.xlsx.writeBuffer();const blob=new Blob([data],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='kineRoom_resultados_DEMO.xlsx';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000);
+ }catch(e){alert('No se pudo generar el Excel: '+e.message);}finally{btn.disabled=false;btn.textContent='Descargar resultados en Excel';}
+}
+document.getElementById('download-excel').addEventListener('click',downloadExcel);
+</script><script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script></body></html>
