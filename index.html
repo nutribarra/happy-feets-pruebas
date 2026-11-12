@@ -11,38 +11,31 @@
 <div class="panel"><div class="uploads">
 <div class="upload"><strong>Extremidad derecha</strong><input id="file-right" type="file" accept="video/*" aria-label="Video de extremidad derecha"><span class="file-name" id="name-right">Sin video seleccionado</span><video id="preview-right" class="hidden" controls playsinline></video></div>
 <div class="upload"><strong>Extremidad izquierda</strong><input id="file-left" type="file" accept="video/*" aria-label="Video de extremidad izquierda"><span class="file-name" id="name-left">Sin video seleccionado</span><video id="preview-left" class="hidden" controls playsinline></video></div>
-</div><p class="muted">Para esta primera versión de interfaz, puedes cargar y previsualizar videos. La detección de marcadores y el cálculo biomecánico se incorporarán después.</p>
-<div class="actions"><button id="to-calibration" disabled>Continuar</button></div></div>
-</section>
-<section id="screen-calibration" class="hidden">
-<h2>Calibración del recorrido</h2><p class="muted">Verifica que la cámara esté fija, perpendicular y centrada respecto de la marcha. Las cintas transversales del suelo deben estar separadas 1 metro.</p>
-<div class="panel"><h3>Referencia del trayecto</h3><div class="meters"><span class="mark">0 m</span><span class="mark">1 m</span><span class="mark">2 m</span><span class="mark">3 m</span><span class="mark">4 m</span><span class="mark">5 m</span></div>
-<p class="muted">Esquema orientativo, no una calibración automática. La identificación de las marcas sobre el video y la corrección de perspectiva están pendientes de implementar.</p>
-<label><input id="check-calibration" type="checkbox"> Confirmo que las marcas del suelo son visibles y están separadas 1 metro.</label>
-<div class="actions"><button class="secondary" data-back="videos">Volver</button><button id="to-analysis" disabled>Continuar</button></div></div>
+</div><p class="muted">Puedes cargar y previsualizar videos. La detección de marcadores y el cálculo biomecánico se incorporarán después.</p>
+<div class="actions"><button id="to-calibration" disabled>Continuar al análisis</button></div></div>
 </section>
 <section id="screen-analysis" class="hidden">
 <h2>Análisis de marcha</h2><p class="muted">Aquí se realizará el seguimiento de marcadores, el respaldo de MediaPipe y la identificación automática de ciclos.</p>
 <div class="panel"><span class="pill">Función en desarrollo</span><p class="muted">Esta etapa todavía no analiza los videos. Para revisar la interfaz, puedes abrir una simulación claramente identificada con datos ficticios.</p>
-<div class="actions"><button class="secondary" data-back="calibration">Volver</button><button id="demo-results">Ver ejemplo de resultados ficticios</button></div></div>
+<div class="actions"><button class="secondary" data-back="videos">Volver</button><button id="demo-results">Ver ejemplo de resultados ficticios</button></div></div>
 </section>
 <section id="screen-results" class="hidden">
 <div class="row"><h2>Resultados de marcha</h2><span class="pill">SIMULACIÓN · NO CLÍNICO</span></div>
 <p class="muted">Valores de ejemplo, no calculados a partir de los videos cargados.</p>
 <div id="joint-cards"></div>
 <div class="panel"><h3>Variables espaciotemporales</h3><div class="two"><div class="card"><strong>Longitud del paso derecho</strong><span>0,48 m</span></div><div class="card"><strong>Longitud del paso izquierdo</strong><span>0,62 m</span></div></div><p class="muted">Diferencia entre lados: 0,14 m</p><div class="card"><strong>Velocidad de marcha habitual</strong>0,82 m/s</div><details><summary>Ver mediciones individuales</summary><table><thead><tr><th>Paso</th><th>Derecho</th><th>Izquierdo</th></tr></thead><tbody><tr><td>1</td><td>0,47 m</td><td>0,61 m</td></tr><tr><td>2</td><td>0,49 m</td><td>0,63 m</td></tr><tr><td>3</td><td>0,48 m</td><td>0,62 m</td></tr></tbody></table></details></div>
-<div class="actions"><button class="secondary" data-back="analysis">Volver</button><button id="download-excel">Descargar resultados en Excel</button><button class="secondary" id="restart">Nueva evaluación</button></div>
+<div class="panel"><h3>Exportar resultados</h3><p class="muted">Archivo Excel con las hojas Resumen, Por ciclo y Curvas - datos. En esta versión contiene exclusivamente datos ficticios.</p><button id="download-excel">⬇ Descargar resultados en Excel (.xlsx)</button></div><div class="actions"><button class="secondary" data-back="analysis">Volver</button><button class="secondary" id="restart">Nueva evaluación</button></div>
 </section>
-<footer>kineRoom · Prototipo experimental. Las mediciones cinemáticas y espaciotemporales requerirán calibración y validación antes de su uso clínico.</footer>
+<footer>kineRoom · Prototipo experimental. Las mediciones cinemáticas y espaciotemporales requieren validación antes de su uso clínico.</footer>
 </main>
 <script>
-const screens=['videos','calibration','analysis','results'];let active='videos';const urls={right:null,left:null};
+const screens=['videos','analysis','results'];let active='videos';const urls={right:null,left:null};
 function show(name){screens.forEach(s=>document.getElementById('screen-'+s).classList.toggle('hidden',s!==name));active=name;window.scrollTo({top:0,behavior:'smooth'});}
 function ready(){document.getElementById('to-calibration').disabled=!(document.getElementById('file-right').files.length&&document.getElementById('file-left').files.length);}
 for(const side of ['right','left']){const inp=document.getElementById('file-'+side),preview=document.getElementById('preview-'+side),label=document.getElementById('name-'+side);inp.addEventListener('change',()=>{if(urls[side])URL.revokeObjectURL(urls[side]);const file=inp.files[0];if(file){urls[side]=URL.createObjectURL(file);preview.src=urls[side];preview.classList.remove('hidden');label.textContent=file.name;}else{urls[side]=null;preview.removeAttribute('src');preview.load();preview.classList.add('hidden');label.textContent='Sin video seleccionado';}ready();});}
-document.getElementById('to-calibration').onclick=()=>show('calibration');
-document.getElementById('check-calibration').onchange=e=>document.getElementById('to-analysis').disabled=!e.target.checked;
-document.getElementById('to-analysis').onclick=()=>show('analysis');
+document.getElementById('to-calibration').onclick=()=>show('analysis');
+
+
 document.getElementById('demo-results').onclick=()=>show('results');
 document.querySelectorAll('[data-back]').forEach(b=>b.onclick=()=>show(b.dataset.back));
 document.getElementById('restart').onclick=()=>show('videos');
@@ -101,7 +94,7 @@ async function downloadExcel(){
   cycles.getRow(cr+6).values=['Promedio',.48,.62];cycles.getRow(cr+8).values=['Velocidad habitual (m/s)',.82];cycles.getRow(cr+9).values=['Distancia de ejemplo (m)',4.10];cycles.getRow(cr+10).values=['Tiempo de ejemplo (s)',5.00];
   const data=await wb.xlsx.writeBuffer();const blob=new Blob([data],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
   const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='kineRoom_resultados_DEMO.xlsx';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000);
- }catch(e){alert('No se pudo generar el Excel: '+e.message);}finally{btn.disabled=false;btn.textContent='Descargar resultados en Excel';}
+ }catch(e){alert('No se pudo generar el Excel: '+e.message);}finally{btn.disabled=false;btn.textContent='⬇ Descargar resultados en Excel (.xlsx)';}
 }
 document.getElementById('download-excel').addEventListener('click',downloadExcel);
 </script><script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script></body></html>
