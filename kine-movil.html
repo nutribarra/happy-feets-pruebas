@@ -83,11 +83,14 @@ const capturedPoints={right:[],left:[]};
 const landmarkIndices={right:[12,24,26,28,32],left:[11,23,25,27,31]};
 const landmarkNames=['hombro','cadera','rodilla','tobillo','pie'];
 const autoVideo=document.getElementById('auto-video');
+const analysisVideos={right:document.createElement('video'),left:document.createElement('video')};
+let currentAnalysisVideo=autoVideo;
+for(const v of Object.values(analysisVideos)){v.muted=true;v.playsInline=true;v.preload='auto';v.style.cssText='position:absolute;width:1px;height:1px;opacity:0;pointer-events:none';document.body.appendChild(v);}
 let autoPose=null,autoCancelled=false,autoRunning=false,autoSide='right',autoTime=0;
 const reviewFlags={right:[],left:[]};
 function autoMessage(message){document.getElementById('auto-status').textContent=message;}
 function autoState(side,message){document.getElementById('auto-'+side).textContent=message;}
-function stopTracking(){autoCancelled=true;autoVideo.pause();}
+function stopTracking(){autoCancelled=true;currentAnalysisVideo.pause();}
 async function loadAutoPose(){
  if(autoPose)return autoPose;
  if(typeof Pose==='undefined')throw Error('MediaPipe no está disponible. Comprueba la conexión a internet.');
@@ -110,6 +113,7 @@ function videoErrorDescription(video){
 function waitForEvent(el,event,timeout=30000){
  return new Promise((resolve,reject)=>{
   if(event==='loadedmetadata'&&el.readyState>=1){resolve();return;}
+  if(event==='loadeddata'&&el.readyState>=2){resolve();return;}
   const timer=setTimeout(()=>{cleanup();reject(Error('Tiempo de espera agotado al preparar el video.'));},timeout);
   const onSuccess=()=>{cleanup();resolve();};
   const onError=()=>{cleanup();reject(Error(videoErrorDescription(el)));};
@@ -119,24 +123,22 @@ function waitForEvent(el,event,timeout=30000){
 }
 async function prepareAutoVideo(side){
  const file=document.getElementById('file-'+side).files?.[0];
- if(!file)throw Error('No se encontró el archivo de la extremidad '+side+'.');
+ if(!file)throw Error('No se encontró el video '+side+'.');
  if(!urls[side])urls[side]=URL.createObjectURL(file);
- // Evita resetear el reproductor y provocar un evento error de carga al cambiar de archivo.
- autoVideo.pause();
- autoVideo.src=urls[side];
- autoVideo.preload='auto';
- autoVideo.load();
- await waitForEvent(autoVideo,'loadedmetadata',30000);
- if(!Number.isFinite(autoVideo.duration)||autoVideo.duration<=0)throw Error('Duración de video no válida.');
- if(autoVideo.readyState<2)await waitForEvent(autoVideo,'loadeddata',30000);
- return autoVideo.duration;
+ const v=analysisVideos[side];currentAnalysisVideo=v;
+ if(v.src!==urls[side]){v.src=urls[side];v.load();}
+ await waitForEvent(v,'loadedmetadata',30000);
+ if(!Number.isFinite(v.duration)||v.duration<=0)throw Error('Duración de video no válida.');
+ if(v.readyState<2)await waitForEvent(v,'loadeddata',30000);
+ return v.duration;
 }
 async function seekAuto(time){
- if(Math.abs(autoVideo.currentTime-time)<.002&&autoVideo.readyState>=2)return;
- const promise=waitForEvent(autoVideo,'seeked',30000);
- autoVideo.currentTime=time;
+ const v=currentAnalysisVideo;
+ if(Math.abs(v.currentTime-time)<.002&&v.readyState>=2)return;
+ const promise=waitForEvent(v,'seeked',30000);
+ v.currentTime=time;
  await promise;
- if(autoVideo.readyState<2)await waitForEvent(autoVideo,'loadeddata',30000);
+ if(v.readyState<2)await waitForEvent(v,'loadeddata',30000);
 }
 function renderReview(){
  const root=document.getElementById('review-list');root.replaceChildren();
@@ -156,30 +158,42 @@ async function startAutoAnalysis(){
  document.getElementById('review-area').classList.add('hidden');
  document.getElementById('auto-progress').value=0;
  for(const side of ['right','left']){capturedPoints[side]=[];reviewFlags[side]=[];autoState(side,'Pendiente');}
+ const failures=[];
  try{
   const pose=await loadAutoPose();
   for(let si=0;si<2;si++){
    const side=['right','left'][si];autoSide=side;
-   if(autoCancelled)throw Error('Análisis interrumpido.');
-   autoState(side,'Cargando video…');autoMessage('Preparando extremidad '+(side==='right'?'derecha':'izquierda')+'…');
-   const duration=await prepareAutoVideo(side);
-   // Muestreo temporal hasta 10 fps, limitado para evitar bloquear dispositivos móviles.
-   const count=Math.min(600,Math.max(1,Math.ceil(duration*10)));
-   for(let i=0;i<count;i++){
-    if(autoCancelled)throw Error('Análisis interrumpido.');
-    const t=Math.min(duration-.001,i*duration/count);
-    await seekAuto(t);autoTime=t;
-    await pose.send({image:autoVideo});
-    const pct=Math.round(((si+(i+1)/count)/2)*100);
-    document.getElementById('auto-progress').value=pct;
-    if(i%5===0||i===count-1){autoState(side,Math.round((i+1)/count*100)+'% · '+capturedPoints[side].length+' fotogramas');autoMessage('Analizando extremidad '+(side==='right'?'derecha':'izquierda')+'… '+pct+'% total');await new Promise(res=>setTimeout(res,0));}
+   if(autoCancelled)break;
+   try{
+    autoState(side,'Cargando video…');
+    autoMessage('Preparando extremidad '+(side==='right'?'derecha':'izquierda')+'…');
+    const duration=await prepareAutoVideo(side);
+    const count=Math.min(600,Math.max(1,Math.ceil(duration*10)));
+    for(let i=0;i<count;i++){
+     if(autoCancelled)throw Error('Análisis interrumpido.');
+     const t=Math.min(duration-.001,i*duration/count);
+     await seekAuto(t);autoTime=t;
+     await pose.send({image:currentAnalysisVideo});
+     const pct=Math.round(((si+(i+1)/count)/2)*100);
+     document.getElementById('auto-progress').value=pct;
+     if(i%5===0||i===count-1){
+      autoState(side,Math.round((i+1)/count*100)+'% · '+capturedPoints[side].length+' fotogramas');
+      autoMessage('Analizando extremidad '+(side==='right'?'derecha':'izquierda')+'… '+pct+'% total');
+      await new Promise(res=>setTimeout(res,0));
+     }
+    }
+    autoState(side,'Completado · '+capturedPoints[side].length+' fotogramas');
+   }catch(err){
+    failures.push((side==='right'?'Derecha':'Izquierda')+': '+err.message);
+    autoState(side,'Error · '+err.message);
+    document.getElementById('auto-progress').value=(si+1)*50;
    }
-   autoState(side,'Completado · '+capturedPoints[side].length+' fotogramas');
   }
-  autoMessage('Seguimiento automático de ambas extremidades completado.');
-  renderReview();
-  document.getElementById('auto-finish').classList.remove('hidden');
- }catch(err){autoMessage('No se pudo completar el procesamiento: '+err.message+' Si el problema persiste, prueba un MP4 H.264 y envíanos este mensaje.');}
+  if(autoCancelled)autoMessage('Análisis interrumpido.');
+  else if(failures.length)autoMessage('Procesamiento parcial. '+failures.join(' | ')+'. Los datos de la otra extremidad se conservan.');
+  else autoMessage('Seguimiento automático de ambas extremidades completado.');
+  if(!autoCancelled){renderReview();document.getElementById('auto-finish').classList.remove('hidden');}
+ }catch(err){autoMessage('No se pudo iniciar MediaPipe: '+err.message);}
  finally{autoRunning=false;document.getElementById('auto-retry').classList.remove('hidden');}
 }
 document.getElementById('auto-retry').onclick=startAutoAnalysis;
