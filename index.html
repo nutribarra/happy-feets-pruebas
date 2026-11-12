@@ -13,18 +13,25 @@
 <div class="upload"><strong>Extremidad derecha</strong><input id="file-right" type="file" accept="video/*" aria-label="Video de extremidad derecha"><span class="file-name" id="name-right">Sin video seleccionado</span><video id="preview-right" class="hidden" controls playsinline></video></div>
 <div class="upload"><strong>Extremidad izquierda</strong><input id="file-left" type="file" accept="video/*" aria-label="Video de extremidad izquierda"><span class="file-name" id="name-left">Sin video seleccionado</span><video id="preview-left" class="hidden" controls playsinline></video></div>
 </div><p class="muted">Puedes cargar y previsualizar videos. La detección de marcadores y el cálculo biomecánico se incorporarán después.</p>
-<div class="actions"><button id="to-calibration" disabled>Continuar al análisis</button></div></div>
+<div class="actions"><button id="to-calibration" disabled>Realizar análisis</button></div></div>
 </section>
 <section id="screen-analysis" class="hidden">
-<h2>Análisis de marcha · Seguimiento corporal</h2>
-<p class="muted">Reproduce el video para visualizar los puntos corporales detectados por MediaPipe. Esta primera etapa es una prueba visual del seguimiento, no una medición articular.</p>
+<h2>Procesamiento automático bilateral</h2>
+<p class="muted">kineRoom analiza ambos videos de forma consecutiva. No es necesario iniciar el seguimiento de cada extremidad.</p>
 <div class="panel">
-<div class="tracking-controls"><label for="track-side">Video a revisar</label><select id="track-side"><option value="right">Extremidad derecha</option><option value="left">Extremidad izquierda</option></select><button id="track-start">Iniciar seguimiento</button><button class="secondary" id="track-stop">Detener</button></div>
-<div class="tracker"><video id="track-video" controls playsinline></video><canvas id="track-overlay"></canvas></div>
-<p class="tracking-note" id="track-count">Fotogramas registrados: 0 · Puntos: hombro, cadera, rodilla, tobillo y pie de la extremidad seleccionada.</p><p class="status" id="track-status" role="status">Selecciona un video y pulsa «Iniciar seguimiento».</p>
-<p class="tracking-note">Los puntos verdes representan estimaciones de MediaPipe. Todavía no se detectan marcadores físicos ni se calculan ángulos o ciclos. Si la persona no aparece de perfil o sale del encuadre, el seguimiento puede perderse.</p>
-<div class="actions"><button class="secondary" data-back="videos">Volver</button><button id="demo-results">Ver ejemplo de resultados ficticios</button></div>
-</div></section>
+<div class="two"><div class="card"><strong>Extremidad derecha</strong><div id="auto-right">Pendiente</div></div><div class="card"><strong>Extremidad izquierda</strong><div id="auto-left">Pendiente</div></div></div>
+<progress id="auto-progress" max="100" value="0" style="width:100%;height:18px;margin-top:20px"></progress>
+<p class="status" id="auto-status" role="status">Preparando análisis…</p>
+<div id="review-area" class="hidden">
+<h3>Revisión de seguimiento</h3>
+<p class="muted">Se detectaron fotogramas con puntos de baja visibilidad. Puedes consultar sus tiempos y visualizar los puntos estimados. La corrección manual todavía está en desarrollo.</p>
+<div id="review-list"></div>
+</div>
+<div id="auto-finish" class="hidden notice">El seguimiento automático finalizó. Las coordenadas se registraron en memoria; aún faltan la detección de marcadores físicos, la corrección manual, los cálculos articulares y los ciclos para generar resultados reales. No se mostrará un informe clínico con datos ficticios.</div>
+<div class="actions"><button id="auto-retry" class="secondary hidden">Repetir análisis</button><button id="auto-back" class="secondary">Volver a los videos</button><button id="demo-results" class="secondary">Ver resultados ficticios (demostración)</button></div>
+</div>
+<video id="auto-video" muted playsinline preload="auto" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"></video>
+</section>
 <section id="screen-results" class="hidden">
 <div class="row"><h2>Resultados de marcha</h2><span class="pill">SIMULACIÓN · NO CLÍNICO</span></div>
 <p class="muted">Valores de ejemplo, no calculados a partir de los videos cargados.</p>
@@ -39,37 +46,101 @@ const screens=['videos','analysis','results'];let active='videos';const urls={ri
 function show(name){if(active==='analysis'&&name!=='analysis'&&typeof stopTracking==='function')stopTracking();screens.forEach(s=>document.getElementById('screen-'+s).classList.toggle('hidden',s!==name));active=name;window.scrollTo({top:0,behavior:'smooth'});}
 function ready(){document.getElementById('to-calibration').disabled=!(document.getElementById('file-right').files.length&&document.getElementById('file-left').files.length);}
 for(const side of ['right','left']){const inp=document.getElementById('file-'+side),preview=document.getElementById('preview-'+side),label=document.getElementById('name-'+side);inp.addEventListener('change',()=>{if(urls[side])URL.revokeObjectURL(urls[side]);const file=inp.files[0];if(file){capturedPoints[side]=[];if(typeof updateTrackCount==='function')updateTrackCount();urls[side]=URL.createObjectURL(file);preview.src=urls[side];preview.classList.remove('hidden');label.textContent=file.name;}else{capturedPoints[side]=[];if(typeof updateTrackCount==='function')updateTrackCount();urls[side]=null;preview.removeAttribute('src');preview.load();preview.classList.add('hidden');label.textContent='Sin video seleccionado';}ready();});}
-document.getElementById('to-calibration').onclick=()=>{show('analysis');selectTrackingVideo();};
+document.getElementById('to-calibration').onclick=()=>{show('analysis');startAutoAnalysis();};
 
 
 document.getElementById('demo-results').onclick=()=>show('results');
 document.querySelectorAll('[data-back]').forEach(b=>b.onclick=()=>show(b.dataset.back));
 document.getElementById('restart').onclick=()=>show('videos');
 
-let trackerPose=null,trackerActive=false,trackerBusy=false,trackerLast=-1,trackerFrame=0;
-const trackVideo=document.getElementById('track-video'),trackCanvas=document.getElementById('track-overlay'),trackStatus=document.getElementById('track-status');
-const trackCtx=trackCanvas.getContext('2d');
-const capturedPoints={right:[],left:[]};let captureTime=0;
-const trackCount=document.getElementById('track-count');
+
+const capturedPoints={right:[],left:[]};
 const landmarkIndices={right:[12,24,26,28,32],left:[11,23,25,27,31]};
 const landmarkNames=['hombro','cadera','rodilla','tobillo','pie'];
-function updateTrackCount(){const side=document.getElementById('track-side').value;trackCount.textContent='Fotogramas registrados ('+(side==='right'?'derecha':'izquierda')+'): '+capturedPoints[side].length+' · Hombro, cadera, rodilla, tobillo y pie.';}
-function trackingMessage(t){trackStatus.textContent=t;}
-function selectTrackingVideo(){stopTracking();updateTrackCount();const side=document.getElementById('track-side').value;trackVideo.src=urls[side]||'';trackVideo.load();trackingMessage('Video '+(side==='right'?'derecho':'izquierdo')+' listo. Pulsa «Iniciar seguimiento».');}
-document.getElementById('track-side').addEventListener('change',selectTrackingVideo);
-function clearTracking(){trackCtx.clearRect(0,0,trackCanvas.width,trackCanvas.height);}
-function stopTracking(){trackerActive=false;cancelAnimationFrame(trackerFrame);trackVideo.pause();clearTracking();}
-document.getElementById('track-stop').onclick=()=>{stopTracking();trackingMessage('Seguimiento detenido.');};
-function drawTracking(results){
- const v=results.image;if(!v)return;
- const w=v.videoWidth||v.width,h=v.videoHeight||v.height;
- if(!w||!h)return;
- if(trackCanvas.width!==w||trackCanvas.height!==h){trackCanvas.width=w;trackCanvas.height=h;}
- clearTracking();
- const points=results.poseLandmarks;if(!points){trackingMessage('No se detectó una persona con suficiente confianza en este fotograma.');return;}
- const side=document.getElementById('track-side').value;
- const ids=landmarkIndices[side];
- const joints=ids.map((id,i)=>{const p=points[id];return {name:landmarkNames[i],x:p.x,y:p.y,visibility:p.visibility??1};});
+const autoVideo=document.getElementById('auto-video');
+let autoPose=null,autoCancelled=false,autoRunning=false,autoSide='right',autoTime=0;
+const reviewFlags={right:[],left:[]};
+function autoMessage(message){document.getElementById('auto-status').textContent=message;}
+function autoState(side,message){document.getElementById('auto-'+side).textContent=message;}
+function stopTracking(){autoCancelled=true;autoVideo.pause();}
+async function loadAutoPose(){
+ if(autoPose)return autoPose;
+ if(typeof Pose==='undefined')throw Error('MediaPipe no está disponible. Comprueba la conexión a internet.');
+ const p=new Pose({locateFile:file=>'https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/'+file});
+ p.setOptions({modelComplexity:1,smoothLandmarks:true,minDetectionConfidence:.55,minTrackingConfidence:.5});
+ p.onResults(result=>{
+   const landmarks=result.poseLandmarks;
+   const values=landmarks?landmarkIndices[autoSide].map((id,i)=>({name:landmarkNames[i],x:landmarks[id].x,y:landmarks[id].y,visibility:landmarks[id].visibility??1})):null;
+   const record={time:Number(autoTime.toFixed(3)),points:values,source:'mediapipe'};
+   capturedPoints[autoSide].push(record);
+   if(!values||values.some(p=>p.visibility<.55))reviewFlags[autoSide].push(record.time);
+ });
+ autoPose=p;return p;
+}
+function waitForEvent(el,event,timeout=12000){
+ return new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>{cleanup();reject(Error('Tiempo de espera agotado al cargar el video.'));},timeout);
+  const onSuccess=()=>{cleanup();resolve();},onError=()=>{cleanup();reject(Error('No se pudo leer el archivo de video.'));};
+  function cleanup(){clearTimeout(timer);el.removeEventListener(event,onSuccess);el.removeEventListener('error',onError);}
+  el.addEventListener(event,onSuccess,{once:true});el.addEventListener('error',onError,{once:true});
+ });
+}
+async function seekAuto(time){
+ if(Math.abs(autoVideo.currentTime-time)<.002&&autoVideo.readyState>=2)return;
+ const promise=waitForEvent(autoVideo,'seeked');
+ autoVideo.currentTime=time;
+ await promise;
+}
+function renderReview(){
+ const root=document.getElementById('review-list');root.replaceChildren();
+ for(const side of ['right','left']){
+  const flags=reviewFlags[side];
+  const div=document.createElement('div');div.className='card';div.style.marginTop='10px';
+  const title=document.createElement('strong');title.textContent=(side==='right'?'Derecha':'Izquierda')+': '+flags.length+' fotogramas señalados';div.appendChild(title);
+  const p=document.createElement('p');p.className='muted';p.textContent=flags.length?'Tiempos de ejemplo: '+flags.slice(0,12).map(t=>t.toFixed(2)+' s').join(', ')+(flags.length>12?'…':''):'Sin alertas de baja visibilidad en los fotogramas muestreados.';div.appendChild(p);root.appendChild(div);
+ }
+ document.getElementById('review-area').classList.remove('hidden');
+}
+async function startAutoAnalysis(){
+ if(autoRunning)return;
+ autoRunning=true;autoCancelled=false;
+ document.getElementById('auto-retry').classList.add('hidden');
+ document.getElementById('auto-finish').classList.add('hidden');
+ document.getElementById('review-area').classList.add('hidden');
+ document.getElementById('auto-progress').value=0;
+ for(const side of ['right','left']){capturedPoints[side]=[];reviewFlags[side]=[];autoState(side,'Pendiente');}
+ try{
+  const pose=await loadAutoPose();
+  for(let si=0;si<2;si++){
+   const side=['right','left'][si];autoSide=side;
+   if(autoCancelled)throw Error('Análisis interrumpido.');
+   autoState(side,'Cargando video…');autoMessage('Preparando extremidad '+(side==='right'?'derecha':'izquierda')+'…');
+   autoVideo.removeAttribute('src');autoVideo.load();autoVideo.src=urls[side];
+   await waitForEvent(autoVideo,'loadedmetadata');
+   if(!Number.isFinite(autoVideo.duration)||autoVideo.duration<=0)throw Error('Duración de video no válida.');
+   const duration=autoVideo.duration;
+   // Muestreo temporal hasta 10 fps, limitado para evitar bloquear dispositivos móviles.
+   const count=Math.min(600,Math.max(1,Math.ceil(duration*10)));
+   for(let i=0;i<count;i++){
+    if(autoCancelled)throw Error('Análisis interrumpido.');
+    const t=Math.min(duration-.001,i*duration/count);
+    await seekAuto(t);autoTime=t;
+    await pose.send({image:autoVideo});
+    const pct=Math.round(((si+(i+1)/count)/2)*100);
+    document.getElementById('auto-progress').value=pct;
+    if(i%5===0||i===count-1){autoState(side,Math.round((i+1)/count*100)+'% · '+capturedPoints[side].length+' fotogramas');autoMessage('Analizando extremidad '+(side==='right'?'derecha':'izquierda')+'… '+pct+'% total');await new Promise(res=>setTimeout(res,0));}
+   }
+   autoState(side,'Completado · '+capturedPoints[side].length+' fotogramas');
+  }
+  autoMessage('Seguimiento automático de ambas extremidades completado.');
+  renderReview();
+  document.getElementById('auto-finish').classList.remove('hidden');
+ }catch(err){autoMessage('No se pudo completar el procesamiento: '+err.message);}
+ finally{autoRunning=false;document.getElementById('auto-retry').classList.remove('hidden');}
+}
+document.getElementById('auto-retry').onclick=startAutoAnalysis;
+document.getElementById('auto-back').onclick=()=>{stopTracking();show('videos');};
+const joints=ids.map((id,i)=>{const p=points[id];return {name:landmarkNames[i],x:p.x,y:p.y,visibility:p.visibility??1};});
  // Captura únicamente puntos del lado seleccionado, con tiempo relativo al video.
  // Las coordenadas se guardan normalizadas (0–1) y NO son marcadores físicos.
  const t=Number(captureTime.toFixed(4));
