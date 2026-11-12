@@ -4,7 +4,7 @@
 <style>
 :root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#173d39;background:#f4f8f7}*{box-sizing:border-box}body{margin:0}header{background:white;border-bottom:1px solid #dce8e4;padding:20px max(22px,calc((100vw - 1040px)/2))}h1{font-size:30px;margin:0;letter-spacing:-1px}h1 span{color:#009b85}main{max-width:1040px;margin:32px auto;padding:0 20px 65px}.muted{color:#627c76;font-size:14px;line-height:1.55}h2{font-size:25px;margin:0 0 8px}h3{font-size:18px;margin:0 0 14px}.panel{background:white;border:1px solid #dce8e4;border-radius:18px;padding:24px;margin-top:20px;box-shadow:0 5px 22px #123e330a}.uploads{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.upload{min-width:0;width:100%;overflow:hidden;border:2px dashed #bfd8d0;border-radius:14px;padding:22px;min-height:170px;display:flex;flex-direction:column;justify-content:center;gap:10px}.upload strong{font-size:17px}.upload input{display:block;width:100%;min-width:0;max-width:100%;font-size:14px;overflow:hidden}.upload input::file-selector-button{max-width:100%;margin-bottom:8px}.upload strong{overflow-wrap:anywhere}.upload video{width:100%;max-height:220px;border-radius:9px;background:#152723}.upload .file-name{font-size:12px;color:#607e77;overflow-wrap:anywhere}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px}button{background:#008d7a;color:white;border:0;border-radius:10px;padding:12px 18px;font-weight:650;cursor:pointer}button.secondary{background:#e7f3ef;color:#176052}button:disabled{opacity:.45;cursor:not-allowed}.notice{background:#eff7f4;padding:14px;border-radius:12px;color:#355e55;font-size:14px;line-height:1.5}.hidden{display:none!important}.meters{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.mark{flex:1;text-align:center;border-top:4px solid #e0aa52;padding-top:10px;font-size:12px}.status{margin-top:12px;font-size:14px;color:#486f64}.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}.card{background:#f3f8f6;border-radius:12px;padding:16px}.card strong{display:block;margin-bottom:7px}.pill{display:inline-block;padding:5px 10px;border-radius:100px;background:#e7f3ef;color:#156956;font-size:12px;font-weight:700}.row{display:flex;justify-content:space-between;gap:10px;align-items:center}table{border-collapse:collapse;width:100%;font-size:14px}td,th{padding:10px;border-bottom:1px solid #e3eeea;text-align:left}th{color:#617e75}details{border-top:1px solid #e1eae7;padding-top:14px;margin-top:15px}summary{cursor:pointer;font-weight:650}footer{font-size:12px;color:#738c83;margin-top:25px}@media(max-width:680px){.uploads,.two{grid-template-columns:minmax(0,1fr)}.panel{padding:16px;min-width:0}.upload{padding:16px}main{padding:0 14px 50px}h2{font-size:22px}}
 .tracker{position:relative;background:#142622;border-radius:12px;overflow:hidden;max-width:850px;margin:14px auto}.tracker video{display:block;width:100%;max-height:540px;object-fit:contain}.tracker canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.tracking-controls{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.tracking-controls label{font-weight:650;font-size:14px}.tracking-controls select{padding:9px;border:1px solid #c7dad3;border-radius:9px}.tracking-note{font-size:13px;color:#57766e;line-height:1.5}
-.file-progress{display:flex;align-items:center;gap:9px;font-size:13px;color:#476d62}.file-spinner{width:23px;height:23px;border:3px solid #cfe5df;border-top-color:#008d7a;border-radius:50%;animation:spin .8s linear infinite;flex:none}.file-spinner.done{animation:none;border-color:#008d7a}.file-spinner.done:after{content:'✓';display:block;text-align:center;line-height:17px;color:#008d7a;font-weight:bold}@keyframes spin{to{transform:rotate(360deg)}}</style></head><body>
+.file-progress{display:flex;align-items:center;gap:9px;font-size:13px;color:#476d62}.file-spinner{width:23px;height:23px;border:3px solid #cfe5df;border-top-color:#008d7a;border-radius:50%;animation:spin .8s linear infinite;flex:none}.file-spinner.done{animation:none;border-color:#008d7a}.file-spinner.done:after{content:'✓';display:block;text-align:center;line-height:17px;color:#008d7a;font-weight:bold}@keyframes spin{to{transform:rotate(360deg)}}.review-controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0}.review-controls select,.review-controls input{font-size:16px;max-width:100%}.review-canvas{display:block;width:100%;height:auto;touch-action:manipulation;border-radius:12px;background:#142521}.review-legend{font-size:13px;color:#486960;line-height:1.6}.review-legend span{display:inline-block;margin-right:12px}.review-legend .orange{color:#c96b00}.review-legend .blue{color:#2477cf}.review-legend .purple{color:#a43ba4}</style></head><body>
 <header><h1>kine<span>Room</span></h1><div class="muted">Análisis cinemático de la marcha · Prototipo</div></header>
 <main>
 <section id="screen-videos">
@@ -25,7 +25,7 @@
 <div id="review-area" class="hidden">
 <h3>Revisión de seguimiento</h3>
 <p class="muted">El detector busca marcadores circulares naranjos cerca de los cinco puntos anatómicos. Cuando no encuentra uno, conserva la estimación de MediaPipe y la identifica como tal. Las asociaciones requieren revisión visual; la corrección manual todavía está pendiente.</p>
-<div id="review-list"></div>
+<div id="review-list"></div><div id="visual-review" class="panel hidden"><h3>Revisión visual de marcadores</h3><div class="review-controls"><label>Extremidad <select id="review-side"><option value="right">Derecha</option><option value="left">Izquierda</option></select></label><label>Marcador <select id="review-point"><option value="0">Acromion</option><option value="1">Trocánter mayor</option><option value="2">Cóndilo femoral lateral</option><option value="3">Maléolo lateral</option><option value="4">Quinto metatarsiano</option></select></label></div><div class="review-controls"><button type="button" class="secondary" id="review-prev">Anterior</button><input type="range" id="review-slider" min="0" max="0" value="0" style="flex:1;min-width:90px"><button type="button" class="secondary" id="review-next">Siguiente</button></div><p id="review-frame-info" class="muted"></p><canvas id="review-canvas" class="review-canvas" width="640" height="360" aria-label="Fotograma con puntos de seguimiento; tocar para corregir el marcador seleccionado"></canvas><p class="review-legend"><span class="orange">● Naranja: candidato detectado</span><span class="blue">● Azul: estimación MediaPipe</span><span class="purple">● Morado: corrección manual</span></p><p class="muted">Para corregir un punto, selecciona su nombre y toca su posición real en la imagen. La corrección se guarda en este análisis, sin alterar otros fotogramas.</p><div class="actions"><button class="secondary" type="button" id="review-undo">Deshacer corrección de este punto</button></div></div>
 </div>
 <div id="auto-finish" class="hidden notice">El seguimiento automático finalizó. Las coordenadas se registraron en memoria; aún faltan la validación del detector de marcadores físicos, la corrección manual, los cálculos articulares y los ciclos para generar resultados reales. No se mostrará un informe clínico con datos ficticios.</div>
 <div class="actions"><button id="auto-retry" class="secondary hidden">Repetir análisis</button><button id="auto-back" class="secondary">Volver a los videos</button><button id="demo-results" class="secondary">Ver resultados ficticios (demostración)</button></div>
@@ -197,6 +197,58 @@ async function seekAuto(time){
   catch(e){if(v.readyState<2)throw Error('El video no entrega fotogramas decodificados: '+e.message);}
  }
 }
+const reviewNames=['Acromion','Trocánter mayor','Cóndilo femoral lateral','Maléolo lateral','Quinto metatarsiano'];
+let reviewIndex=0,reviewRenderToken=0;
+const reviewCanvas=document.getElementById('review-canvas'),reviewCtx=reviewCanvas.getContext('2d');
+function reviewSide(){return document.getElementById('review-side').value;}
+async function drawReview(){
+ const token=++reviewRenderToken,side=reviewSide(),records=capturedPoints[side];
+ const slider=document.getElementById('review-slider');
+ slider.max=Math.max(0,records.length-1);
+ reviewIndex=Math.max(0,Math.min(reviewIndex,records.length-1));
+ slider.value=reviewIndex;
+ if(!records.length){document.getElementById('review-frame-info').textContent='Sin fotogramas procesados para esta extremidad.';return;}
+ const rec=records[reviewIndex],v=analysisVideos[side];
+ document.getElementById('review-frame-info').textContent='Fotograma '+(reviewIndex+1)+' de '+records.length+' · '+rec.time.toFixed(2)+' s · Toca la imagen para corregir el marcador seleccionado.';
+ try{
+  if(Math.abs(v.currentTime-rec.time)>.015){
+   const waiting=waitForEvent(v,'seeked',10000);
+   v.currentTime=rec.time;await waiting;
+  }
+  if(token!==reviewRenderToken)return;
+  reviewCanvas.width=v.videoWidth||640;reviewCanvas.height=v.videoHeight||360;
+  reviewCtx.drawImage(v,0,0,reviewCanvas.width,reviewCanvas.height);
+  const selected=Number(document.getElementById('review-point').value);
+  (rec.points||[]).forEach((p,i)=>{
+   if(!p)return;
+   const x=p.x*reviewCanvas.width,y=p.y*reviewCanvas.height;
+   const color=p.source==='manual'?'#bb36d3':p.source==='orange-candidate'?'#ff9000':'#2088e8';
+   reviewCtx.beginPath();reviewCtx.arc(x,y,i===selected?12:8,0,Math.PI*2);
+   reviewCtx.lineWidth=3;reviewCtx.strokeStyle='#fff';reviewCtx.stroke();
+   reviewCtx.fillStyle=color;reviewCtx.fill();
+   reviewCtx.font='bold '+Math.max(13,Math.round(reviewCanvas.width/50))+'px sans-serif';
+   reviewCtx.fillStyle='#fff';reviewCtx.strokeStyle='#102d29';reviewCtx.lineWidth=3;
+   reviewCtx.strokeText(String(i+1),x+12,y-10);reviewCtx.fillText(String(i+1),x+12,y-10);
+  });
+ }catch(e){if(token===reviewRenderToken)document.getElementById('review-frame-info').textContent+=' · No se pudo mostrar el fotograma: '+e.message;}
+}
+document.getElementById('review-side').onchange=()=>{reviewIndex=0;drawReview();};
+document.getElementById('review-point').onchange=()=>drawReview();
+document.getElementById('review-slider').oninput=e=>{reviewIndex=Number(e.target.value);drawReview();};
+document.getElementById('review-prev').onclick=()=>{reviewIndex=Math.max(0,reviewIndex-1);drawReview();};
+document.getElementById('review-next').onclick=()=>{reviewIndex=Math.min(capturedPoints[reviewSide()].length-1,reviewIndex+1);drawReview();};
+reviewCanvas.addEventListener('click',e=>{
+ const rec=capturedPoints[reviewSide()][reviewIndex];if(!rec?.points)return;
+ const rect=reviewCanvas.getBoundingClientRect(),i=Number(document.getElementById('review-point').value);
+ const x=(e.clientX-rect.left)/rect.width,y=(e.clientY-rect.top)/rect.height;
+ if(x<0||x>1||y<0||y>1)return;
+ const old=rec.points[i]||{visibility:1};rec.points[i]={...old,x,y,source:'manual',confidence:'user-corrected'};
+ drawReview();
+});
+document.getElementById('review-undo').onclick=()=>{
+ const rec=capturedPoints[reviewSide()][reviewIndex],i=Number(document.getElementById('review-point').value);
+ if(rec?.points?.[i]?.source==='manual'){rec.points[i]={...rec.points[i],source:'mediapipe-estimate',confidence:'unverified'};drawReview();}
+};
 function renderReview(){
  const root=document.getElementById('review-list');root.replaceChildren();
  for(const side of ['right','left']){
@@ -206,6 +258,9 @@ function renderReview(){
   const p=document.createElement('p');p.className='muted';p.textContent='Candidatos naranjos: '+markerStats[side].physical+' · Puntos estimados con MediaPipe: '+markerStats[side].estimated+'. '+(flags.length?'Tiempos de ejemplo: '+flags.slice(0,12).map(t=>t.toFixed(2)+' s').join(', ')+(flags.length>12?'…':''):'Sin alertas en los fotogramas muestreados.');div.appendChild(p);root.appendChild(div);
  }
  document.getElementById('review-area').classList.remove('hidden');
+ const hasFrames=capturedPoints.right.length+capturedPoints.left.length>0;
+ document.getElementById('visual-review').classList.toggle('hidden',!hasFrames);
+ if(hasFrames){if(!capturedPoints[reviewSide()].length)document.getElementById('review-side').value=capturedPoints.right.length?'right':'left';reviewIndex=0;drawReview();}
 }
 async function startAutoAnalysis(){
  if(autoRunning)return;
