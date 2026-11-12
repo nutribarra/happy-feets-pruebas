@@ -102,19 +102,41 @@ async function loadAutoPose(){
  });
  autoPose=p;return p;
 }
-function waitForEvent(el,event,timeout=12000){
+function videoErrorDescription(video){
+ const e=video.error;
+ const codes={1:'Carga interrumpida',2:'Error de lectura o conexión',3:'El navegador no pudo decodificar este video',4:'Formato o códec no compatible'};
+ return e?(codes[e.code]||'Error desconocido')+(e.message?' ('+e.message+')':''):'El navegador no pudo abrir el video';
+}
+function waitForEvent(el,event,timeout=30000){
  return new Promise((resolve,reject)=>{
-  const timer=setTimeout(()=>{cleanup();reject(Error('Tiempo de espera agotado al cargar el video.'));},timeout);
-  const onSuccess=()=>{cleanup();resolve();},onError=()=>{cleanup();reject(Error('No se pudo leer el archivo de video.'));};
+  if(event==='loadedmetadata'&&el.readyState>=1){resolve();return;}
+  const timer=setTimeout(()=>{cleanup();reject(Error('Tiempo de espera agotado al preparar el video.'));},timeout);
+  const onSuccess=()=>{cleanup();resolve();};
+  const onError=()=>{cleanup();reject(Error(videoErrorDescription(el)));};
   function cleanup(){clearTimeout(timer);el.removeEventListener(event,onSuccess);el.removeEventListener('error',onError);}
   el.addEventListener(event,onSuccess,{once:true});el.addEventListener('error',onError,{once:true});
  });
 }
+async function prepareAutoVideo(side){
+ const file=document.getElementById('file-'+side).files?.[0];
+ if(!file)throw Error('No se encontró el archivo de la extremidad '+side+'.');
+ if(!urls[side])urls[side]=URL.createObjectURL(file);
+ // Evita resetear el reproductor y provocar un evento error de carga al cambiar de archivo.
+ autoVideo.pause();
+ autoVideo.src=urls[side];
+ autoVideo.preload='auto';
+ autoVideo.load();
+ await waitForEvent(autoVideo,'loadedmetadata',30000);
+ if(!Number.isFinite(autoVideo.duration)||autoVideo.duration<=0)throw Error('Duración de video no válida.');
+ if(autoVideo.readyState<2)await waitForEvent(autoVideo,'loadeddata',30000);
+ return autoVideo.duration;
+}
 async function seekAuto(time){
  if(Math.abs(autoVideo.currentTime-time)<.002&&autoVideo.readyState>=2)return;
- const promise=waitForEvent(autoVideo,'seeked');
+ const promise=waitForEvent(autoVideo,'seeked',30000);
  autoVideo.currentTime=time;
  await promise;
+ if(autoVideo.readyState<2)await waitForEvent(autoVideo,'loadeddata',30000);
 }
 function renderReview(){
  const root=document.getElementById('review-list');root.replaceChildren();
@@ -140,9 +162,7 @@ async function startAutoAnalysis(){
    const side=['right','left'][si];autoSide=side;
    if(autoCancelled)throw Error('Análisis interrumpido.');
    autoState(side,'Cargando video…');autoMessage('Preparando extremidad '+(side==='right'?'derecha':'izquierda')+'…');
-   autoVideo.removeAttribute('src');autoVideo.load();const metadataReady=waitForEvent(autoVideo,'loadedmetadata',25000);autoVideo.src=urls[side];autoVideo.load();await metadataReady;
-   if(!Number.isFinite(autoVideo.duration)||autoVideo.duration<=0)throw Error('Duración de video no válida.');
-   const duration=autoVideo.duration;
+   const duration=await prepareAutoVideo(side);
    // Muestreo temporal hasta 10 fps, limitado para evitar bloquear dispositivos móviles.
    const count=Math.min(600,Math.max(1,Math.ceil(duration*10)));
    for(let i=0;i<count;i++){
@@ -159,7 +179,7 @@ async function startAutoAnalysis(){
   autoMessage('Seguimiento automático de ambas extremidades completado.');
   renderReview();
   document.getElementById('auto-finish').classList.remove('hidden');
- }catch(err){autoMessage('No se pudo completar el procesamiento: '+err.message);}
+ }catch(err){autoMessage('No se pudo completar el procesamiento: '+err.message+' Si el problema persiste, prueba un MP4 H.264 y envíanos este mensaje.');}
  finally{autoRunning=false;document.getElementById('auto-retry').classList.remove('hidden');}
 }
 document.getElementById('auto-retry').onclick=startAutoAnalysis;
