@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>kineRoom · Análisis de marcha · Móvil</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#173d39;background:#f4f8f7}*{box-sizing:border-box}body{margin:0}header{background:white;border-bottom:1px solid #dce8e4;padding:20px max(22px,calc((100vw - 1040px)/2))}h1{font-size:30px;margin:0;letter-spacing:-1px}h1 span{color:#009b85}main{max-width:1040px;margin:32px auto;padding:0 20px 65px}.muted{color:#627c76;font-size:14px;line-height:1.55}h2{font-size:25px;margin:0 0 8px}h3{font-size:18px;margin:0 0 14px}.panel{background:white;border:1px solid #dce8e4;border-radius:18px;padding:24px;margin-top:20px;box-shadow:0 5px 22px #123e330a}.uploads{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.upload{min-width:0;width:100%;overflow:hidden;border:2px dashed #bfd8d0;border-radius:14px;padding:22px;min-height:170px;display:flex;flex-direction:column;justify-content:center;gap:10px}.upload strong{font-size:17px}.upload input{display:block;width:100%;min-width:0;max-width:100%;font-size:14px;overflow:hidden}.upload input::file-selector-button{max-width:100%;margin-bottom:8px}.upload strong{overflow-wrap:anywhere}.upload video{width:100%;max-height:220px;border-radius:9px;background:#152723}.upload .file-name{font-size:12px;color:#607e77;overflow-wrap:anywhere}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px}button{background:#008d7a;color:white;border:0;border-radius:10px;padding:12px 18px;font-weight:650;cursor:pointer}button.secondary{background:#e7f3ef;color:#176052}button:disabled{opacity:.45;cursor:not-allowed}.notice{background:#eff7f4;padding:14px;border-radius:12px;color:#355e55;font-size:14px;line-height:1.5}.hidden{display:none!important}.meters{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.mark{flex:1;text-align:center;border-top:4px solid #e0aa52;padding-top:10px;font-size:12px}.status{margin-top:12px;font-size:14px;color:#486f64}.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}.card{background:#f3f8f6;border-radius:12px;padding:16px}.card strong{display:block;margin-bottom:7px}.pill{display:inline-block;padding:5px 10px;border-radius:100px;background:#e7f3ef;color:#156956;font-size:12px;font-weight:700}.row{display:flex;justify-content:space-between;gap:10px;align-items:center}table{border-collapse:collapse;width:100%;font-size:14px}td,th{padding:10px;border-bottom:1px solid #e3eeea;text-align:left}th{color:#617e75}details{border-top:1px solid #e1eae7;padding-top:14px;margin-top:15px}summary{cursor:pointer;font-weight:650}footer{font-size:12px;color:#738c83;margin-top:25px}@media(max-width:680px){.uploads,.two{grid-template-columns:minmax(0,1fr)}.panel{padding:16px;min-width:0}.upload{padding:16px}main{padding:0 14px 50px}h2{font-size:22px}}
+.tracker{position:relative;background:#142622;border-radius:12px;overflow:hidden;max-width:850px;margin:14px auto}.tracker video{display:block;width:100%;max-height:540px;object-fit:contain}.tracker canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.tracking-controls{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.tracking-controls label{font-weight:650;font-size:14px}.tracking-controls select{padding:9px;border:1px solid #c7dad3;border-radius:9px}.tracking-note{font-size:13px;color:#57766e;line-height:1.5}
+</style></head><body>
+<header><h1>kine<span>Room</span></h1><div class="muted">Análisis cinemático de la marcha · Prototipo</div></header>
+<main>
+<section id="screen-videos">
+<h2>Carga de videos</h2><p class="muted">Sube una grabación para cada extremidad. La selección del espacio determina el lado evaluado. Marcha habitual en recorrido recto de 4 a 6 metros.</p>
+<div class="panel"><div class="uploads">
+<div class="upload"><strong>Extremidad derecha</strong><input id="file-right" type="file" accept="video/*" aria-label="Video de extremidad derecha"><span class="file-name" id="name-right" aria-live="polite">Sin video seleccionado</span><video id="preview-right" class="hidden" controls playsinline></video></div>
+<div class="upload"><strong>Extremidad izquierda</strong><input id="file-left" type="file" accept="video/*" aria-label="Video de extremidad izquierda"><span class="file-name" id="name-left" aria-live="polite">Sin video seleccionado</span><video id="preview-left" class="hidden" controls playsinline></video></div>
+</div><p class="muted">Selecciona ambos videos para iniciar el seguimiento automático. El cálculo biomecánico completo sigue en desarrollo.</p>
+<div class="actions"><button id="to-calibration" disabled>Realizar análisis</button></div></div>
+</section>
+<section id="screen-analysis" class="hidden">
+<h2>Procesamiento automático bilateral</h2>
+<p class="muted">kineRoom analiza ambos videos de forma consecutiva. No es necesario iniciar el seguimiento de cada extremidad.</p>
+<div class="panel">
+<div class="two"><div class="card"><strong>Extremidad derecha</strong><div id="auto-right">Pendiente</div></div><div class="card"><strong>Extremidad izquierda</strong><div id="auto-left">Pendiente</div></div></div>
+<progress id="auto-progress" max="100" value="0" style="width:100%;height:18px;margin-top:20px"></progress>
+<p class="status" id="auto-status" role="status">Preparando análisis…</p>
+<div id="review-area" class="hidden">
+<h3>Revisión de seguimiento</h3>
+<p class="muted">Se detectaron fotogramas con puntos de baja visibilidad. Puedes consultar sus tiempos y visualizar los puntos estimados. La corrección manual todavía está en desarrollo.</p>
+<div id="review-list"></div>
+</div>
+<div id="auto-finish" class="hidden notice">El seguimiento automático finalizó. Las coordenadas se registraron en memoria; aún faltan la detección de marcadores físicos, la corrección manual, los cálculos articulares y los ciclos para generar resultados reales. No se mostrará un informe clínico con datos ficticios.</div>
+<div class="actions"><button id="auto-retry" class="secondary hidden">Repetir análisis</button><button id="auto-back" class="secondary">Volver a los videos</button><button id="demo-results" class="secondary">Ver resultados ficticios (demostración)</button></div>
+</div>
+<video id="auto-video" muted playsinline preload="auto" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"></video>
+</section>
+<section id="screen-results" class="hidden">
+<div class="row"><h2>Resultados de marcha</h2><span class="pill">SIMULACIÓN · NO CLÍNICO</span></div>
+<p class="muted">Valores de ejemplo, no calculados a partir de los videos cargados.</p>
+<div id="joint-cards"></div>
+<div class="panel"><h3>Variables espaciotemporales</h3><div class="two"><div class="card"><strong>Longitud del paso derecho</strong><span>0,48 m</span></div><div class="card"><strong>Longitud del paso izquierdo</strong><span>0,62 m</span></div></div><p class="muted">Diferencia entre lados: 0,14 m</p><div class="card"><strong>Velocidad de marcha habitual</strong>0,82 m/s</div><details><summary>Ver mediciones individuales</summary><table><thead><tr><th>Paso</th><th>Derecho</th><th>Izquierdo</th></tr></thead><tbody><tr><td>1</td><td>0,47 m</td><td>0,61 m</td></tr><tr><td>2</td><td>0,49 m</td><td>0,63 m</td></tr><tr><td>3</td><td>0,48 m</td><td>0,62 m</td></tr></tbody></table></details></div>
+<div class="panel"><h3>Exportar resultados</h3><p class="muted">Archivo Excel con las hojas Resumen, Por ciclo y Curvas - datos. En esta versión contiene exclusivamente datos ficticios.</p><button id="download-excel">⬇ Descargar resultados en Excel (.xlsx)</button></div><div class="actions"><button class="secondary" data-back="analysis">Volver</button><button class="secondary" id="restart">Nueva evaluación</button></div>
+</section>
+<footer>kineRoom · Prototipo experimental. Las mediciones cinemáticas y espaciotemporales requieren validación antes de su uso clínico.</footer>
+</main>
+<script>
+const screens=['videos','analysis','results'];let active='videos';const urls={right:null,left:null};
+function show(name){if(active==='analysis'&&name!=='analysis'&&typeof stopTracking==='function')stopTracking();screens.forEach(s=>document.getElementById('screen-'+s).classList.toggle('hidden',s!==name));active=name;window.scrollTo({top:0,behavior:'smooth'});}
+function ready(){const loaded=['right','left'].every(side=>document.getElementById('file-'+side).files?.length>0);document.getElementById('to-calibration').disabled=!loaded;}
+for(const side of ['right','left']){const inp=document.getElementById('file-'+side),preview=document.getElementById('preview-'+side),label=document.getElementById('name-'+side);inp.addEventListener('change',()=>{if(urls[side])URL.revokeObjectURL(urls[side]);const file=inp.files[0];if(file){capturedPoints[side]=[];urls[side]=URL.createObjectURL(file);preview.src=urls[side];preview.classList.remove('hidden');label.textContent='✓ Video cargado: '+file.name;label.style.color='#176052';}else{capturedPoints[side]=[];if(typeof updateTrackCount==='function')updateTrackCount();urls[side]=null;preview.removeAttribute('src');preview.load();preview.classList.add('hidden');label.textContent='Sin video seleccionado';label.style.color='';}ready();});}
+document.getElementById('to-calibration').onclick=()=>{show('analysis');startAutoAnalysis();};
+
+
+document.getElementById('demo-results').onclick=()=>show('results');
+document.querySelectorAll('[data-back]').forEach(b=>b.onclick=()=>show(b.dataset.back));
+document.getElementById('restart').onclick=()=>show('videos');
+
+
+const capturedPoints={right:[],left:[]};
+const landmarkIndices={right:[12,24,26,28,32],left:[11,23,25,27,31]};
+const landmarkNames=['hombro','cadera','rodilla','tobillo','pie'];
+const autoVideo=document.getElementById('auto-video');
+let autoPose=null,autoCancelled=false,autoRunning=false,autoSide='right',autoTime=0;
+const reviewFlags={right:[],left:[]};
+function autoMessage(message){document.getElementById('auto-status').textContent=message;}
+function autoState(side,message){document.getElementById('auto-'+side).textContent=message;}
+function stopTracking(){autoCancelled=true;autoVideo.pause();}
+async function loadAutoPose(){
+ if(autoPose)return autoPose;
+ if(typeof Pose==='undefined')throw Error('MediaPipe no está disponible. Comprueba la conexión a internet.');
+ const p=new Pose({locateFile:file=>'https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/'+file});
+ p.setOptions({modelComplexity:1,smoothLandmarks:true,minDetectionConfidence:.55,minTrackingConfidence:.5});
+ p.onResults(result=>{
+   const landmarks=result.poseLandmarks;
+   const values=landmarks?landmarkIndices[autoSide].map((id,i)=>({name:landmarkNames[i],x:landmarks[id].x,y:landmarks[id].y,visibility:landmarks[id].visibility??1})):null;
+   const record={time:Number(autoTime.toFixed(3)),points:values,source:'mediapipe'};
+   capturedPoints[autoSide].push(record);
+   if(!values||values.some(p=>p.visibility<.55))reviewFlags[autoSide].push(record.time);
+ });
+ autoPose=p;return p;
+}
+function waitForEvent(el,event,timeout=12000){
+ return new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>{cleanup();reject(Error('Tiempo de espera agotado al cargar el video.'));},timeout);
+  const onSuccess=()=>{cleanup();resolve();},onError=()=>{cleanup();reject(Error('No se pudo leer el archivo de video.'));};
+  function cleanup(){clearTimeout(timer);el.removeEventListener(event,onSuccess);el.removeEventListener('error',onError);}
+  el.addEventListener(event,onSuccess,{once:true});el.addEventListener('error',onError,{once:true});
+ });
+}
+async function seekAuto(time){
+ if(Math.abs(autoVideo.currentTime-time)<.002&&autoVideo.readyState>=2)return;
+ const promise=waitForEvent(autoVideo,'seeked');
+ autoVideo.currentTime=time;
+ await promise;
+}
+function renderReview(){
+ const root=document.getElementById('review-list');root.replaceChildren();
+ for(const side of ['right','left']){
+  const flags=reviewFlags[side];
+  const div=document.createElement('div');div.className='card';div.style.marginTop='10px';
+  const title=document.createElement('strong');title.textContent=(side==='right'?'Derecha':'Izquierda')+': '+flags.length+' fotogramas señalados';div.appendChild(title);
+  const p=document.createElement('p');p.className='muted';p.textContent=flags.length?'Tiempos de ejemplo: '+flags.slice(0,12).map(t=>t.toFixed(2)+' s').join(', ')+(flags.length>12?'…':''):'Sin alertas de baja visibilidad en los fotogramas muestreados.';div.appendChild(p);root.appendChild(div);
+ }
+ document.getElementById('review-area').classList.remove('hidden');
+}
+async function startAutoAnalysis(){
+ if(autoRunning)return;
+ autoRunning=true;autoCancelled=false;
+ document.getElementById('auto-retry').classList.add('hidden');
+ document.getElementById('auto-finish').classList.add('hidden');
+ document.getElementById('review-area').classList.add('hidden');
+ document.getElementById('auto-progress').value=0;
+ for(const side of ['right','left']){capturedPoints[side]=[];reviewFlags[side]=[];autoState(side,'Pendiente');}
+ try{
+  const pose=await loadAutoPose();
+  for(let si=0;si<2;si++){
+   const side=['right','left'][si];autoSide=side;
+   if(autoCancelled)throw Error('Análisis interrumpido.');
+   autoState(side,'Cargando video…');autoMessage('Preparando extremidad '+(side==='right'?'derecha':'izquierda')+'…');
+   autoVideo.removeAttribute('src');autoVideo.load();autoVideo.src=urls[side];
+   await waitForEvent(autoVideo,'loadedmetadata');
+   if(!Number.isFinite(autoVideo.duration)||autoVideo.duration<=0)throw Error('Duración de video no válida.');
+   const duration=autoVideo.duration;
+   // Muestreo temporal hasta 10 fps, limitado para evitar bloquear dispositivos móviles.
+   const count=Math.min(600,Math.max(1,Math.ceil(duration*10)));
+   for(let i=0;i<count;i++){
+    if(autoCancelled)throw Error('Análisis interrumpido.');
+    const t=Math.min(duration-.001,i*duration/count);
+    await seekAuto(t);autoTime=t;
+    await pose.send({image:autoVideo});
+    const pct=Math.round(((si+(i+1)/count)/2)*100);
+    document.getElementById('auto-progress').value=pct;
+    if(i%5===0||i===count-1){autoState(side,Math.round((i+1)/count*100)+'% · '+capturedPoints[side].length+' fotogramas');autoMessage('Analizando extremidad '+(side==='right'?'derecha':'izquierda')+'… '+pct+'% total');await new Promise(res=>setTimeout(res,0));}
+   }
+   autoState(side,'Completado · '+capturedPoints[side].length+' fotogramas');
+  }
+  autoMessage('Seguimiento automático de ambas extremidades completado.');
+  renderReview();
+  document.getElementById('auto-finish').classList.remove('hidden');
+ }catch(err){autoMessage('No se pudo completar el procesamiento: '+err.message);}
+ finally{autoRunning=false;document.getElementById('auto-retry').classList.remove('hidden');}
+}
+document.getElementById('auto-retry').onclick=startAutoAnalysis;
+document.getElementById('auto-back').onclick=()=>{stopTracking();show('videos');};
+const joints=ids.map((id,i)=>{const p=points[id];return {name:landmarkNames[i],x:p.x,y:p.y,visibility:p.visibility??1};});
+ // Captura únicamente puntos del lado seleccionado, con tiempo relativo al video.
+ // Las coordenadas se guardan normalizadas (0–1) y NO son marcadores físicos.
+ const t=Number(captureTime.toFixed(4));
+ if(!capturedPoints[side].some(row=>Math.abs(row.time-t)<.0001)){
+   capturedPoints[side].push({time:t,points:joints.map(p=>({...p}))});
+   updateTrackCount();
+ }
+ const pairs=[[0,1],[1,2],[2,3],[3,4]];
+ trackCtx.lineWidth=Math.max(2,w/270);trackCtx.strokeStyle='#54d9b4';trackCtx.fillStyle='#f6a451';
+ for(const [i,j] of pairs){const p=joints[i],q=joints[j];if(p.visibility<.45||q.visibility<.45)continue;trackCtx.beginPath();trackCtx.moveTo(p.x*w,p.y*h);trackCtx.lineTo(q.x*w,q.y*h);trackCtx.stroke();}
+ for(const p of joints){if(p.visibility<.45)continue;trackCtx.beginPath();trackCtx.arc(p.x*w,p.y*h,Math.max(3,w/160),0,Math.PI*2);trackCtx.fill();}
+ trackingMessage('Seguimiento de extremidad '+(side==='right'?'derecha':'izquierda')+'. Se registran coordenadas y tiempo por fotograma procesado. Los puntos son estimaciones de MediaPipe.');
+}
+async function loadTracker(){
+ if(trackerPose)return trackerPose;
+ if(typeof Pose==='undefined')throw new Error('No se cargó MediaPipe. Comprueba la conexión a internet y vuelve a intentarlo.');
+ const p=new Pose({locateFile:file=>'https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/'+file});
+ p.setOptions({modelComplexity:1,smoothLandmarks:true,minDetectionConfidence:.55,minTrackingConfidence:.5});
+ p.onResults(drawTracking);trackerPose=p;return p;
+}
+async function trackLoop(){
+ if(!trackerActive)return;
+ if(!trackerBusy&&trackVideo.readyState>=2&&!trackVideo.paused&&trackVideo.currentTime!==trackerLast){
+   trackerBusy=true;trackerLast=trackVideo.currentTime;captureTime=trackerLast;
+   try{await trackerPose.send({image:trackVideo});}
+   catch(err){stopTracking();trackingMessage('Error durante el seguimiento: '+err.message);return;}
+   finally{trackerBusy=false;}
+ }
+ if(trackerActive)trackerFrame=requestAnimationFrame(trackLoop);
+}
+document.getElementById('track-start').onclick=async()=>{
+ const side=document.getElementById('track-side').value;
+ if(!urls[side]){trackingMessage('Carga primero el video de esta extremidad.');return;}
+ stopTracking();trackingMessage('Cargando MediaPipe…');
+ try{await loadTracker();trackerLast=-1;await trackVideo.play();trackerActive=true;trackingMessage('Procesando video…');trackLoop();}
+ catch(err){trackingMessage('No se pudo iniciar: '+err.message);}
+};
+trackVideo.addEventListener('ended',()=>{trackerActive=false;cancelAnimationFrame(trackerFrame);trackingMessage('Video finalizado. Puedes volver a reproducirlo para revisar el seguimiento.');});
+
+const joints=[
+{name:'Cadera',right:[18,15,9,1,-5,-9,-4,5,16,22,18],left:[25,20,12,3,-6,-12,-7,9,22,29,25],min:-20,max:40,ro:[0,1,-2],lo:[0,-1,1],labels:['Flexión máxima','Extensión máxima','ROM']},
+{name:'Rodilla',right:[8,14,10,7,12,28,44,49,36,18,8],left:[6,13,9,6,12,38,60,66,47,20,6],min:0,max:80,ro:[0,2,-1],lo:[0,-2,1],labels:['Flexión máxima','Extensión máxima','ROM']},
+{name:'Tobillo',right:[0,-5,0,5,8,2,-13,-5,3,2,0],left:[1,-7,1,7,12,3,-18,-7,5,3,1],min:-25,max:20,ro:[0,1,-1],lo:[0,-1,1],labels:['Dorsiflexión máxima','Flexión plantar máxima','ROM']}
+];
+function metric(a,off){return off.map(o=>{const v=a.map(x=>x+o),max=Math.max(...v),min=Math.min(...v);return [max,min,max-min]});}
+function avg(a,i){return (a.reduce((s,r)=>s+r[i],0)/a.length).toFixed(1).replace('.',',')+'°';}
+function svg(j){const path=(a,off)=>off.flatMap((o,k)=>a.map((v,i)=>[k*1.1+i*.11,v+o])).map(([t,v],i)=>(i?'L':'M')+(45+t/3.3*290).toFixed(1)+','+(175-(v-j.min)/(j.max-j.min)*140).toFixed(1)).join(' ');
+let grid='';for(let i=0;i<=4;i++){let v=j.min+(j.max-j.min)*i/4,y=175-i*35;grid+='<line x1="45" x2="335" y1="'+y+'" y2="'+y+'" stroke="#dfe9e5"/><text x="37" y="'+(y+4)+'" text-anchor="end" font-size="10" fill="#688078">'+Math.round(v)+'°</text>';}
+for(let i=0;i<=3;i++){let x=45+i*290/3;grid+='<line x1="'+x+'" x2="'+x+'" y1="30" y2="175" stroke="#9eaaa6" stroke-dasharray="4 4"/><text x="'+x+'" y="194" text-anchor="middle" font-size="10" fill="#688078">'+(i*1.1).toFixed(1)+' s</text>';if(i<3)grid+='<text x="'+(x+290/6)+'" y="23" text-anchor="middle" font-size="11" fill="#49675f">Ciclo '+(i+1)+'</text>';}
+return '<svg viewBox="0 0 350 220" role="img" aria-label="Curvas angulares ficticias de '+j.name+'" style="width:100%;max-width:760px"><text x="45" y="11" font-size="10" fill="#688078">Ángulo (°)</text>'+grid+'<path d="'+path(j.right,j.ro)+'" fill="none" stroke="#df7957" stroke-width="2.7"/><path d="'+path(j.left,j.lo)+'" fill="none" stroke="#3787bc" stroke-width="2.7"/><text x="190" y="215" text-anchor="middle" font-size="11" fill="#688078">Tiempo (s)</text></svg>';}
+document.getElementById('joint-cards').innerHTML=joints.map(j=>{const r=metric(j.right,j.ro),l=metric(j.left,j.lo);return '<div class="panel"><h3>'+j.name+' · Ángulo en el tiempo</h3><p class="muted"><span style="color:#df7957">●</span> Derecha &nbsp; <span style="color:#3787bc">●</span> Izquierda</p>'+svg(j)+'<p class="muted">Promedios de 3 ciclos ficticios</p><table><thead><tr><th>Medición</th><th>Derecha</th><th>Izquierda</th></tr></thead><tbody>'+j.labels.map((name,i)=>'<tr><td>'+name+'</td><td>'+avg(r,i)+'</td><td>'+avg(l,i)+'</td></tr>').join('')+'</tbody></table><details><summary>Ver resultados por ciclo</summary><div class="two">'+[['Derecha',r],['Izquierda',l]].map(([side,m])=>'<div><h4>'+side+'</h4><table><thead><tr><th>Medición</th><th>C1</th><th>C2</th><th>C3</th></tr></thead><tbody>'+j.labels.map((label,i)=>'<tr><td>'+label+'</td>'+m.map(row=>'<td>'+row[i]+'°</td>').join('')+'</tr>').join('')+'</tbody></table></div>').join('')+'</div></details></div>';}).join('');
+
+async function downloadExcel(){
+ const btn=document.getElementById('download-excel');btn.disabled=true;btn.textContent='Preparando Excel…';
+ try{
+  if(!window.ExcelJS)throw Error('No se pudo cargar la biblioteca de Excel. Revisa tu conexión.');
+  const wb=new ExcelJS.Workbook();wb.creator='kineRoom';wb.subject='Resultados simulados de análisis de marcha';
+  const summary=wb.addWorksheet('Resumen'),cycles=wb.addWorksheet('Por ciclo'),curves=wb.addWorksheet('Curvas - datos');
+  const title=(sh,row,text)=>{sh.mergeCells(row,1,row,5);let c=sh.getCell(row,1);c.value=text;c.font={bold:true,size:15,color:{argb:'FF176454'}};c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFE8F4EF'}};sh.getRow(row).height=26;};
+  const header=(sh,row,values)=>{values.forEach((v,i)=>{const c=sh.getCell(row,i+1);c.value=v;c.font={bold:true,color:{argb:'FFFFFFFF'}};c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF176454'}};c.alignment={wrapText:true};});sh.getRow(row).height=27;};
+  for(const sh of [summary,cycles,curves]){sh.columns=[{width:28},{width:22},{width:22},{width:22},{width:22},{width:20}];sh.views=[{state:'frozen',ySplit:2}];}
+  title(summary,1,'kineRoom · Resumen de marcha');summary.getCell('A2').value='DEMOSTRACIÓN — DATOS FICTICIOS, NO DERIVADOS DE LOS VIDEOS';summary.getCell('A2').font={bold:true,color:{argb:'FFAE5B30'}};
+  let sr=4,cr=1,dr=1;
+  for(const j of joints){
+    const r=metric(j.right,j.ro),l=metric(j.left,j.lo);
+    title(summary,sr,j.name+' · Promedios articulares');header(summary,sr+1,['Medición','Derecha (°)','Izquierda (°)']);
+    j.labels.forEach((label,i)=>{summary.getRow(sr+2+i).values=[label,Number((r.reduce((a,v)=>a+v[i],0)/r.length).toFixed(2)),Number((l.reduce((a,v)=>a+v[i],0)/l.length).toFixed(2))];});
+    title(cycles,cr,j.name+' · Resultados por ciclo');header(cycles,cr+1,['Medición','Derecha C1','Derecha C2','Derecha C3','Prom. derecha']);
+    j.labels.forEach((label,i)=>cycles.getRow(cr+2+i).values=[label,...r.map(v=>v[i]),Number((r.reduce((a,v)=>a+v[i],0)/r.length).toFixed(2))]);
+    header(cycles,cr+6,['Medición','Izquierda C1','Izquierda C2','Izquierda C3','Prom. izquierda']);
+    j.labels.forEach((label,i)=>cycles.getRow(cr+7+i).values=[label,...l.map(v=>v[i]),Number((l.reduce((a,v)=>a+v[i],0)/l.length).toFixed(2))]);
+    cr+=13;
+    title(curves,dr,j.name+' · Curvas angulares');header(curves,dr+1,['Tiempo derecho (s)','Derecha (°)','Tiempo izquierdo (s)','Izquierda (°)']);
+    for(let k=0;k<3;k++)for(let i=0;i<j.right.length;i++){let row=dr+2+k*j.right.length+i;curves.getRow(row).values=[Number((k*1.1+i*.11).toFixed(3)),j.right[i]+j.ro[k],Number((k*1.1+i*.11).toFixed(3)),j.left[i]+j.lo[k]];}
+    dr+=38;
+    // Gráfico de curvas en la hoja Resumen, como imagen estática exportable.
+    const canvas=document.createElement('canvas');canvas.width=900;canvas.height=330;const ctx=canvas.getContext('2d');
+    ctx.fillStyle='#ffffff';ctx.fillRect(0,0,900,330);ctx.font='bold 19px sans-serif';ctx.fillStyle='#173d39';ctx.fillText(j.name+' · Ángulo (°) vs tiempo (s)',45,30);
+    const x0=62,y0=270,w=790,h=205;
+    ctx.font='12px sans-serif';ctx.textAlign='right';
+    for(let n=0;n<=4;n++){const val=j.min+(j.max-j.min)*n/4,y=y0-n*h/4;ctx.strokeStyle='#dce8e4';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x0,y);ctx.lineTo(x0+w,y);ctx.stroke();ctx.fillStyle='#647d75';ctx.fillText(Math.round(val)+'°',x0-8,y+4);}
+    for(let n=0;n<=3;n++){const x=x0+n*w/3;ctx.strokeStyle='#9eaaa6';ctx.setLineDash([5,5]);ctx.beginPath();ctx.moveTo(x,55);ctx.lineTo(x,y0);ctx.stroke();ctx.setLineDash([]);ctx.textAlign='center';ctx.fillStyle='#647d75';ctx.fillText((n*1.1).toFixed(1)+' s',x,y0+19);if(n<3)ctx.fillText('Ciclo '+(n+1),x+w/6,51);}
+    const draw=(arr,offs,color)=>{ctx.strokeStyle=color;ctx.lineWidth=3;ctx.beginPath();offs.forEach((o,k)=>arr.forEach((v,i)=>{const x=x0+(k*1.1+i*.11)/3.3*w,y=y0-(v+o-j.min)/(j.max-j.min)*h;if(k===0&&i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}));ctx.stroke();};
+    draw(j.right,j.ro,'#df7957');draw(j.left,j.lo,'#3787bc');ctx.textAlign='left';ctx.font='13px sans-serif';ctx.fillStyle='#df7957';ctx.fillText('● Derecha',660,30);ctx.fillStyle='#3787bc';ctx.fillText('● Izquierda',755,30);
+    const id=wb.addImage({base64:canvas.toDataURL('image/png'),extension:'png'});summary.addImage(id,{tl:{col:0,row:sr+5},ext:{width:790,height:290}});
+    sr+=24;
+  }
+  title(summary,sr,'Variables espaciotemporales');header(summary,sr+1,['Variable','Valor','Unidad']);
+  [['Longitud del paso derecho',0.48,'m'],['Longitud del paso izquierdo',0.62,'m'],['Diferencia entre lados',0.14,'m'],['Velocidad de marcha habitual',0.82,'m/s']].forEach((a,i)=>summary.getRow(sr+2+i).values=a);
+  title(cycles,cr,'Variables espaciotemporales');header(cycles,cr+1,['Paso','Derecha (m)','Izquierda (m)']);
+  [[1,.47,.61],[2,.49,.63],[3,.48,.62]].forEach((a,i)=>cycles.getRow(cr+2+i).values=a);
+  cycles.getRow(cr+6).values=['Promedio',.48,.62];cycles.getRow(cr+8).values=['Velocidad habitual (m/s)',.82];cycles.getRow(cr+9).values=['Distancia de ejemplo (m)',4.10];cycles.getRow(cr+10).values=['Tiempo de ejemplo (s)',5.00];
+  const data=await wb.xlsx.writeBuffer();const blob=new Blob([data],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='kineRoom_resultados_DEMO.xlsx';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000);
+ }catch(e){alert('No se pudo generar el Excel: '+e.message);}finally{btn.disabled=false;btn.textContent='⬇ Descargar resultados en Excel (.xlsx)';}
+}
+document.getElementById('download-excel').addEventListener('click',downloadExcel);
+</script><script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/pose.js"></script><script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script></body></html>
