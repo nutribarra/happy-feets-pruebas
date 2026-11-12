@@ -4,14 +4,14 @@
 <style>
 :root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#173d39;background:#f4f8f7}*{box-sizing:border-box}body{margin:0}header{background:white;border-bottom:1px solid #dce8e4;padding:20px max(22px,calc((100vw - 1040px)/2))}h1{font-size:30px;margin:0;letter-spacing:-1px}h1 span{color:#009b85}main{max-width:1040px;margin:32px auto;padding:0 20px 65px}.muted{color:#627c76;font-size:14px;line-height:1.55}h2{font-size:25px;margin:0 0 8px}h3{font-size:18px;margin:0 0 14px}.panel{background:white;border:1px solid #dce8e4;border-radius:18px;padding:24px;margin-top:20px;box-shadow:0 5px 22px #123e330a}.uploads{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.upload{min-width:0;width:100%;overflow:hidden;border:2px dashed #bfd8d0;border-radius:14px;padding:22px;min-height:170px;display:flex;flex-direction:column;justify-content:center;gap:10px}.upload strong{font-size:17px}.upload input{display:block;width:100%;min-width:0;max-width:100%;font-size:14px;overflow:hidden}.upload input::file-selector-button{max-width:100%;margin-bottom:8px}.upload strong{overflow-wrap:anywhere}.upload video{width:100%;max-height:220px;border-radius:9px;background:#152723}.upload .file-name{font-size:12px;color:#607e77;overflow-wrap:anywhere}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px}button{background:#008d7a;color:white;border:0;border-radius:10px;padding:12px 18px;font-weight:650;cursor:pointer}button.secondary{background:#e7f3ef;color:#176052}button:disabled{opacity:.45;cursor:not-allowed}.notice{background:#eff7f4;padding:14px;border-radius:12px;color:#355e55;font-size:14px;line-height:1.5}.hidden{display:none!important}.meters{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.mark{flex:1;text-align:center;border-top:4px solid #e0aa52;padding-top:10px;font-size:12px}.status{margin-top:12px;font-size:14px;color:#486f64}.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}.card{background:#f3f8f6;border-radius:12px;padding:16px}.card strong{display:block;margin-bottom:7px}.pill{display:inline-block;padding:5px 10px;border-radius:100px;background:#e7f3ef;color:#156956;font-size:12px;font-weight:700}.row{display:flex;justify-content:space-between;gap:10px;align-items:center}table{border-collapse:collapse;width:100%;font-size:14px}td,th{padding:10px;border-bottom:1px solid #e3eeea;text-align:left}th{color:#617e75}details{border-top:1px solid #e1eae7;padding-top:14px;margin-top:15px}summary{cursor:pointer;font-weight:650}footer{font-size:12px;color:#738c83;margin-top:25px}@media(max-width:680px){.uploads,.two{grid-template-columns:minmax(0,1fr)}.panel{padding:16px;min-width:0}.upload{padding:16px}main{padding:0 14px 50px}h2{font-size:22px}}
 .tracker{position:relative;background:#142622;border-radius:12px;overflow:hidden;max-width:850px;margin:14px auto}.tracker video{display:block;width:100%;max-height:540px;object-fit:contain}.tracker canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.tracking-controls{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.tracking-controls label{font-weight:650;font-size:14px}.tracking-controls select{padding:9px;border:1px solid #c7dad3;border-radius:9px}.tracking-note{font-size:13px;color:#57766e;line-height:1.5}
-</style></head><body>
+.file-progress{display:flex;align-items:center;gap:9px;font-size:13px;color:#476d62}.file-spinner{width:23px;height:23px;border:3px solid #cfe5df;border-top-color:#008d7a;border-radius:50%;animation:spin .8s linear infinite;flex:none}.file-spinner.done{animation:none;border-color:#008d7a}.file-spinner.done:after{content:'✓';display:block;text-align:center;line-height:17px;color:#008d7a;font-weight:bold}@keyframes spin{to{transform:rotate(360deg)}}</style></head><body>
 <header><h1>kine<span>Room</span></h1><div class="muted">Análisis cinemático de la marcha · Prototipo</div></header>
 <main>
 <section id="screen-videos">
 <h2>Carga de videos</h2><p class="muted">Sube una grabación para cada extremidad. La selección del espacio determina el lado evaluado. Marcha habitual en recorrido recto de 4 a 6 metros.</p>
 <div class="panel"><div class="uploads">
-<div class="upload"><strong>Extremidad derecha</strong><input id="file-right" type="file" accept="video/*" aria-label="Video de extremidad derecha"><span class="file-name" id="name-right" aria-live="polite">Sin video seleccionado</span><video id="preview-right" class="hidden" controls playsinline></video></div>
-<div class="upload"><strong>Extremidad izquierda</strong><input id="file-left" type="file" accept="video/*" aria-label="Video de extremidad izquierda"><span class="file-name" id="name-left" aria-live="polite">Sin video seleccionado</span><video id="preview-left" class="hidden" controls playsinline></video></div>
+<div class="upload"><strong>Extremidad derecha</strong><input id="file-right" type="file" accept="video/*" aria-label="Video de extremidad derecha"><span class="file-name" id="name-right" aria-live="polite">Sin video seleccionado</span><div class="file-progress hidden" id="progress-right"><span class="file-spinner" id="spinner-right"></span><span id="progress-text-right">Preparando video…</span></div><video id="preview-right" class="hidden" controls playsinline></video></div>
+<div class="upload"><strong>Extremidad izquierda</strong><input id="file-left" type="file" accept="video/*" aria-label="Video de extremidad izquierda"><span class="file-name" id="name-left" aria-live="polite">Sin video seleccionado</span><div class="file-progress hidden" id="progress-left"><span class="file-spinner" id="spinner-left"></span><span id="progress-text-left">Preparando video…</span></div><video id="preview-left" class="hidden" controls playsinline></video></div>
 </div><p class="muted">Selecciona ambos videos para iniciar el seguimiento automático. El cálculo biomecánico completo sigue en desarrollo.</p>
 <div class="actions"><button id="to-calibration" disabled>Realizar análisis</button></div></div>
 </section>
@@ -44,9 +44,34 @@
 <script>
 const screens=['videos','analysis','results'];let active='videos';const urls={right:null,left:null};
 function show(name){if(active==='analysis'&&name!=='analysis'&&typeof stopTracking==='function')stopTracking();screens.forEach(s=>document.getElementById('screen-'+s).classList.toggle('hidden',s!==name));active=name;window.scrollTo({top:0,behavior:'smooth'});}
-function ready(){const loaded=['right','left'].every(side=>document.getElementById('file-'+side).files?.length>0);document.getElementById('to-calibration').disabled=!loaded;}
-for(const side of ['right','left']){const inp=document.getElementById('file-'+side),preview=document.getElementById('preview-'+side),label=document.getElementById('name-'+side);inp.addEventListener('change',()=>{if(urls[side])URL.revokeObjectURL(urls[side]);const file=inp.files[0];if(file){capturedPoints[side]=[];urls[side]=URL.createObjectURL(file);preview.src=urls[side];preview.classList.remove('hidden');label.textContent='✓ Video cargado: '+file.name;label.style.color='#176052';}else{capturedPoints[side]=[];if(typeof updateTrackCount==='function')updateTrackCount();urls[side]=null;preview.removeAttribute('src');preview.load();preview.classList.add('hidden');label.textContent='Sin video seleccionado';label.style.color='';}ready();});}
-document.getElementById('to-calibration').onclick=()=>{show('analysis');startAutoAnalysis();};
+const uploadState={right:null,left:null};
+function ready(){
+ const present=['right','left'].every(side=>Boolean(document.getElementById('file-'+side).files?.length));
+ document.getElementById('to-calibration').disabled=!present;
+}
+function syncFile(side){
+ const inp=document.getElementById('file-'+side),preview=document.getElementById('preview-'+side),label=document.getElementById('name-'+side);
+ const progress=document.getElementById('progress-'+side),spinner=document.getElementById('spinner-'+side),msg=document.getElementById('progress-text-'+side);
+ const file=inp.files&&inp.files[0];
+ if(!file){label.textContent='Sin video seleccionado';progress.classList.add('hidden');ready();return;}
+ if(uploadState[side]===file&&urls[side]){ready();return;}
+ uploadState[side]=file;
+ if(urls[side])URL.revokeObjectURL(urls[side]);
+ capturedPoints[side]=[];urls[side]=URL.createObjectURL(file);
+ label.textContent='Video seleccionado: '+file.name;label.style.color='#176052';
+ progress.classList.remove('hidden');spinner.classList.remove('done');msg.textContent='Preparando vista previa…';
+ preview.classList.remove('hidden');
+ preview.onloadedmetadata=()=>{spinner.classList.add('done');msg.textContent='Video listo ('+Math.round(preview.duration||0)+' s)';};
+ preview.onerror=()=>{msg.textContent='No se pudo previsualizar. Comprueba el formato del video.';};
+ preview.src=urls[side];preview.load();ready();
+}
+for(const side of ['right','left']){
+ const inp=document.getElementById('file-'+side);
+ inp.addEventListener('change',()=>syncFile(side));inp.addEventListener('input',()=>syncFile(side));
+}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){syncFile('right');syncFile('left');}});
+window.addEventListener('focus',()=>{syncFile('right');syncFile('left');});
+document.getElementById('to-calibration').onclick=()=>{syncFile('right');syncFile('left');if(!urls.right||!urls.left){alert('Selecciona ambos videos.');return;}show('analysis');startAutoAnalysis();};
 
 
 document.getElementById('demo-results').onclick=()=>show('results');
@@ -115,8 +140,7 @@ async function startAutoAnalysis(){
    const side=['right','left'][si];autoSide=side;
    if(autoCancelled)throw Error('Análisis interrumpido.');
    autoState(side,'Cargando video…');autoMessage('Preparando extremidad '+(side==='right'?'derecha':'izquierda')+'…');
-   autoVideo.removeAttribute('src');autoVideo.load();autoVideo.src=urls[side];
-   await waitForEvent(autoVideo,'loadedmetadata');
+   autoVideo.removeAttribute('src');autoVideo.load();const metadataReady=waitForEvent(autoVideo,'loadedmetadata',25000);autoVideo.src=urls[side];autoVideo.load();await metadataReady;
    if(!Number.isFinite(autoVideo.duration)||autoVideo.duration<=0)throw Error('Duración de video no válida.');
    const duration=autoVideo.duration;
    // Muestreo temporal hasta 10 fps, limitado para evitar bloquear dispositivos móviles.
