@@ -24,10 +24,10 @@
 <p class="status" id="auto-status" role="status">Preparando análisis…</p>
 <div id="review-area" class="hidden">
 <h3>Revisión de seguimiento</h3>
-<p class="muted">Se detectaron fotogramas con puntos de baja visibilidad. Puedes consultar sus tiempos y visualizar los puntos estimados. La corrección manual todavía está en desarrollo.</p>
+<p class="muted">El detector busca marcadores circulares naranjos cerca de los cinco puntos anatómicos. Cuando no encuentra uno, conserva la estimación de MediaPipe y la identifica como tal. Las asociaciones requieren revisión visual; la corrección manual todavía está pendiente.</p>
 <div id="review-list"></div>
 </div>
-<div id="auto-finish" class="hidden notice">El seguimiento automático finalizó. Las coordenadas se registraron en memoria; aún faltan la detección de marcadores físicos, la corrección manual, los cálculos articulares y los ciclos para generar resultados reales. No se mostrará un informe clínico con datos ficticios.</div>
+<div id="auto-finish" class="hidden notice">El seguimiento automático finalizó. Las coordenadas se registraron en memoria; aún faltan la validación del detector de marcadores físicos, la corrección manual, los cálculos articulares y los ciclos para generar resultados reales. No se mostrará un informe clínico con datos ficticios.</div>
 <div class="actions"><button id="auto-retry" class="secondary hidden">Repetir análisis</button><button id="auto-back" class="secondary">Volver a los videos</button><button id="demo-results" class="secondary">Ver resultados ficticios (demostración)</button></div>
 </div>
 <video id="auto-video" muted playsinline preload="auto" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"></video>
@@ -88,6 +88,53 @@ let currentAnalysisVideo=autoVideo;
 for(const v of Object.values(analysisVideos)){v.muted=true;v.playsInline=true;v.preload='auto';v.style.cssText='position:absolute;width:1px;height:1px;opacity:0;pointer-events:none';document.body.appendChild(v);}
 let autoPose=null,autoCancelled=false,autoRunning=false,autoSide='right',autoTime=0;
 const reviewFlags={right:[],left:[]};
+const markerStats={right:{physical:0,estimated:0},left:{physical:0,estimated:0}};
+const markerCanvas=document.createElement('canvas'),markerCtx=markerCanvas.getContext('2d',{willReadFrequently:true});
+function detectOrangeMarkers(video,landmarks,side){
+ const w=video.videoWidth,h=video.videoHeight;
+ if(!w||!h||!landmarks)return [];
+ // Reduced resolution keeps processing feasible on mobile.
+ const scale=Math.min(1,480/w,360/h),cw=Math.max(1,Math.round(w*scale)),ch=Math.max(1,Math.round(h*scale));
+ markerCanvas.width=cw;markerCanvas.height=ch;
+ markerCtx.drawImage(video,0,0,cw,ch);
+ const pixels=markerCtx.getImageData(0,0,cw,ch).data;
+ const mask=new Uint8Array(cw*ch),visited=new Uint8Array(cw*ch);
+ for(let i=0;i<mask.length;i++){
+  const r=pixels[4*i],g=pixels[4*i+1],b=pixels[4*i+2];
+  const mx=Math.max(r,g,b),mn=Math.min(r,g,b),sat=mx?((mx-mn)/mx):0;
+  if(r>105&&r>g*1.18&&g>b*1.18&&sat>.48&&g>42)mask[i]=1;
+ }
+ const candidates=[],queue=new Int32Array(cw*ch);
+ for(let y=1;y<ch-1;y++)for(let x=1;x<cw-1;x++){
+  const seed=y*cw+x;if(!mask[seed]||visited[seed])continue;
+  let head=0,tail=1,sumX=0,sumY=0,minX=x,maxX=x,minY=y,maxY=y;queue[0]=seed;visited[seed]=1;
+  while(head<tail){
+   const k=queue[head++],px=k%cw,py=(k/cw)|0;
+   sumX+=px;sumY+=py;minX=Math.min(minX,px);maxX=Math.max(maxX,px);minY=Math.min(minY,py);maxY=Math.max(maxY,py);
+   for(const n of [k-1,k+1,k-cw,k+cw]){
+    if(n<0||n>=mask.length||visited[n]||!mask[n])continue;
+    const nx=n%cw;if(Math.abs(nx-px)>1)continue;
+    visited[n]=1;queue[tail++]=n;
+   }
+  }
+  const bw=maxX-minX+1,bh=maxY-minY+1,aspect=bw/bh,fill=tail/(bw*bh);
+  if(tail>=5&&tail<=cw*ch*.012&&aspect>.55&&aspect<1.75&&fill>.35&&fill<.94)
+   candidates.push({x:sumX/tail/cw,y:sumY/tail/ch,area:tail});
+ }
+ const ids=landmarkIndices[side],used=new Set();
+ return ids.map((id)=>{
+  const p=landmarks[id];if(!p)return null;
+  let best=-1,bestDist=Infinity;
+  for(let i=0;i<candidates.length;i++){
+   if(used.has(i))continue;
+   const c=candidates[i],dx=(c.x-p.x)*cw,dy=(c.y-p.y)*ch,d=Math.hypot(dx,dy);
+   const radius=Math.max(15,Math.min(cw,ch)*.095);
+   if(d<radius&&d<bestDist){best=i;bestDist=d;}
+  }
+  if(best<0)return null;
+  used.add(best);return {...candidates[best],source:'orange-candidate',distancePx:bestDist};
+ });
+}
 function autoMessage(message){document.getElementById('auto-status').textContent=message;}
 function autoState(side,message){document.getElementById('auto-'+side).textContent=message;}
 function stopTracking(){autoCancelled=true;currentAnalysisVideo.pause();}
@@ -99,9 +146,15 @@ async function loadAutoPose(){
  p.onResults(result=>{
    const landmarks=result.poseLandmarks;
    const values=landmarks?landmarkIndices[autoSide].map((id,i)=>({name:landmarkNames[i],x:landmarks[id].x,y:landmarks[id].y,visibility:landmarks[id].visibility??1})):null;
-   const record={time:Number(autoTime.toFixed(3)),points:values,source:'mediapipe'};
+   const matches=values?detectOrangeMarkers(currentAnalysisVideo,landmarks,autoSide):[];
+   const points=values?values.map((p,i)=>{
+    const match=matches[i];
+    if(match){markerStats[autoSide].physical++;return {...p,x:match.x,y:match.y,source:'orange-candidate',confidence:'unverified'};}
+    markerStats[autoSide].estimated++;return {...p,source:'mediapipe-estimate'};
+   }):null;
+   const record={time:Number(autoTime.toFixed(3)),points,source:'mixed-unvalidated'};
    capturedPoints[autoSide].push(record);
-   if(!values||values.some(p=>p.visibility<.55))reviewFlags[autoSide].push(record.time);
+   if(!points||points.some(p=>p.source!=='orange-candidate'||p.visibility<.55))reviewFlags[autoSide].push(record.time);
  });
  autoPose=p;return p;
 }
@@ -146,7 +199,7 @@ function renderReview(){
   const flags=reviewFlags[side];
   const div=document.createElement('div');div.className='card';div.style.marginTop='10px';
   const title=document.createElement('strong');title.textContent=(side==='right'?'Derecha':'Izquierda')+': '+flags.length+' fotogramas señalados';div.appendChild(title);
-  const p=document.createElement('p');p.className='muted';p.textContent=flags.length?'Tiempos de ejemplo: '+flags.slice(0,12).map(t=>t.toFixed(2)+' s').join(', ')+(flags.length>12?'…':''):'Sin alertas de baja visibilidad en los fotogramas muestreados.';div.appendChild(p);root.appendChild(div);
+  const p=document.createElement('p');p.className='muted';p.textContent='Candidatos naranjos: '+markerStats[side].physical+' · Puntos estimados con MediaPipe: '+markerStats[side].estimated+'. '+(flags.length?'Tiempos de ejemplo: '+flags.slice(0,12).map(t=>t.toFixed(2)+' s').join(', ')+(flags.length>12?'…':''):'Sin alertas en los fotogramas muestreados.');div.appendChild(p);root.appendChild(div);
  }
  document.getElementById('review-area').classList.remove('hidden');
 }
@@ -157,7 +210,7 @@ async function startAutoAnalysis(){
  document.getElementById('auto-finish').classList.add('hidden');
  document.getElementById('review-area').classList.add('hidden');
  document.getElementById('auto-progress').value=0;
- for(const side of ['right','left']){capturedPoints[side]=[];reviewFlags[side]=[];autoState(side,'Pendiente');}
+ for(const side of ['right','left']){capturedPoints[side]=[];reviewFlags[side]=[];markerStats[side]={physical:0,estimated:0};autoState(side,'Pendiente');}
  const failures=[];
  try{
   const pose=await loadAutoPose();
