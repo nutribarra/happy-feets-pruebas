@@ -92,6 +92,35 @@ const sideStatus={right:'pending',left:'pending'};
 const markerStats={right:{physical:0,estimated:0},left:{physical:0,estimated:0}};
 const markerCanvas=document.createElement('canvas'),markerCtx=markerCanvas.getContext('2d',{willReadFrequently:true});
 const lastMarker={right:Array(5).fill(null),left:Array(5).fill(null)};
+const shoulderHybrid={right:{offset:null,last:null,pose:null},left:{offset:null,last:null,pose:null}};
+function resetShoulderHybrid(side){shoulderHybrid[side]={offset:null,last:null,pose:null};}
+function hybridShoulder(p,match,side){
+ const state=shoulderHybrid[side],pose={x:p.x,y:p.y};
+ const visible=(p.visibility??1)>=.55;
+ const prior=state.last;
+ const displacement=prior?Math.hypot(pose.x-(state.pose?.x??pose.x),pose.y-(state.pose?.y??pose.y)):0;
+ // The marker must be close to the anatomical shoulder and consistent with prior tracking.
+ const markerOK=!!match&&visible&&Math.hypot(match.x-pose.x,match.y-pose.y)<.055&&
+  (!prior||Math.hypot(match.x-prior.x,match.y-prior.y)<Math.max(.025,displacement*2+.015));
+ let target,source;
+ if(markerOK){
+  const dx=match.x-pose.x,dy=match.y-pose.y;
+  state.offset=state.offset?{x:.85*state.offset.x+.15*dx,y:.85*state.offset.y+.15*dy}:{x:dx,y:dy};
+  target={x:match.x,y:match.y};source='orange-candidate';
+ }else{
+  target={x:pose.x+(state.offset?.x??0),y:pose.y+(state.offset?.y??0)};
+  source='mediapipe-estimate';
+ }
+ // Prevent isolated discontinuities while following genuine shoulder translation.
+ if(prior&&visible){
+  const maxStep=Math.max(.018,Math.min(.09,displacement*1.6+.012));
+  const dx=target.x-prior.x,dy=target.y-prior.y,d=Math.hypot(dx,dy);
+  if(d>maxStep){target={x:prior.x+dx*maxStep/d,y:prior.y+dy*maxStep/d};source='mediapipe-estimate';}
+ }
+ if(visible){state.last=target;state.pose=pose;}
+ return {...p,x:target.x,y:target.y,source,confidence:source==='orange-candidate'?'unverified':'estimated'};
+}
+
 function detectOrangeMarkers(video,landmarks,side){
  const w=video.videoWidth,h=video.videoHeight;
  if(!w||!h||!landmarks)return [];
@@ -162,6 +191,11 @@ async function loadAutoPose(){
    const matches=values?detectOrangeMarkers(currentAnalysisVideo,landmarks,autoSide):[];
    const points=values?values.map((p,i)=>{
     const match=matches[i];
+    if(i===0){
+     const shoulder=hybridShoulder(p,match,autoSide);
+     markerStats[autoSide][shoulder.source==='orange-candidate'?'physical':'estimated']++;
+     return shoulder;
+    }
     if(match){markerStats[autoSide].physical++;return {...p,x:match.x,y:match.y,source:'orange-candidate',confidence:'unverified'};}
     markerStats[autoSide].estimated++;return {...p,source:'mediapipe-estimate'};
    }):null;
@@ -284,7 +318,7 @@ function renderReview(){
 async function runSide(side,pose){
  autoSide=side;
  const si=side==='right'?0:1;
- capturedPoints[side]=[];reviewFlags[side]=[];lastMarker[side]=Array(5).fill(null);markerStats[side]={physical:0,estimated:0};
+ capturedPoints[side]=[];reviewFlags[side]=[];lastMarker[side]=Array(5).fill(null);markerStats[side]={physical:0,estimated:0};resetShoulderHybrid(side);
  sideStatus[side]='running';
  autoState(side,'Preparando video…');
  let lastError=null;
@@ -301,7 +335,7 @@ async function runSide(side,pose){
    const duration=await prepareAutoVideo(side);
    const count=Math.min(600,Math.max(1,Math.ceil(duration*10)));
    // If the decoder fails partway through, discard the partial attempt to avoid duplicate timestamps.
-   capturedPoints[side]=[];reviewFlags[side]=[];lastMarker[side]=Array(5).fill(null);markerStats[side]={physical:0,estimated:0};
+   capturedPoints[side]=[];reviewFlags[side]=[];lastMarker[side]=Array(5).fill(null);markerStats[side]={physical:0,estimated:0};resetShoulderHybrid(side);
    for(let i=0;i<count;i++){
     if(autoCancelled)throw Error('Análisis interrumpido.');
     const t=Math.min(duration-.001,i*duration/count);
@@ -344,7 +378,7 @@ async function startAutoAnalysis(onlySide=null){
  if(!onlySide){
   document.getElementById('auto-progress').value=0;
   for(const side of ['right','left']){
-   capturedPoints[side]=[];reviewFlags[side]=[];lastMarker[side]=Array(5).fill(null);markerStats[side]={physical:0,estimated:0};
+   capturedPoints[side]=[];reviewFlags[side]=[];lastMarker[side]=Array(5).fill(null);markerStats[side]={physical:0,estimated:0};resetShoulderHybrid(side);
    sideStatus[side]='pending';autoState(side,'Pendiente');
   }
  }
