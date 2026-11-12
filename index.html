@@ -3,6 +3,7 @@
 <title>kineRoom · Análisis de marcha</title>
 <style>
 :root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#173d39;background:#f4f8f7}*{box-sizing:border-box}body{margin:0}header{background:white;border-bottom:1px solid #dce8e4;padding:20px max(22px,calc((100vw - 1040px)/2))}h1{font-size:30px;margin:0;letter-spacing:-1px}h1 span{color:#009b85}main{max-width:1040px;margin:32px auto;padding:0 20px 65px}.muted{color:#627c76;font-size:14px;line-height:1.55}h2{font-size:25px;margin:0 0 8px}h3{font-size:18px;margin:0 0 14px}.panel{background:white;border:1px solid #dce8e4;border-radius:18px;padding:24px;margin-top:20px;box-shadow:0 5px 22px #123e330a}.uploads{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.upload{border:2px dashed #bfd8d0;border-radius:14px;padding:22px;min-height:170px;display:flex;flex-direction:column;justify-content:center;gap:10px}.upload strong{font-size:17px}.upload input{max-width:100%}.upload video{width:100%;max-height:220px;border-radius:9px;background:#152723}.upload .file-name{font-size:12px;color:#607e77;overflow-wrap:anywhere}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px}button{background:#008d7a;color:white;border:0;border-radius:10px;padding:12px 18px;font-weight:650;cursor:pointer}button.secondary{background:#e7f3ef;color:#176052}button:disabled{opacity:.45;cursor:not-allowed}.notice{background:#eff7f4;padding:14px;border-radius:12px;color:#355e55;font-size:14px;line-height:1.5}.hidden{display:none!important}.meters{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.mark{flex:1;text-align:center;border-top:4px solid #e0aa52;padding-top:10px;font-size:12px}.status{margin-top:12px;font-size:14px;color:#486f64}.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}.card{background:#f3f8f6;border-radius:12px;padding:16px}.card strong{display:block;margin-bottom:7px}.pill{display:inline-block;padding:5px 10px;border-radius:100px;background:#e7f3ef;color:#156956;font-size:12px;font-weight:700}.row{display:flex;justify-content:space-between;gap:10px;align-items:center}table{border-collapse:collapse;width:100%;font-size:14px}td,th{padding:10px;border-bottom:1px solid #e3eeea;text-align:left}th{color:#617e75}details{border-top:1px solid #e1eae7;padding-top:14px;margin-top:15px}summary{cursor:pointer;font-weight:650}footer{font-size:12px;color:#738c83;margin-top:25px}@media(max-width:680px){.uploads,.two{grid-template-columns:1fr}.panel{padding:18px}h2{font-size:22px}}
+.tracker{position:relative;background:#142622;border-radius:12px;overflow:hidden;max-width:850px;margin:14px auto}.tracker video{display:block;width:100%;max-height:540px;object-fit:contain}.tracker canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.tracking-controls{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.tracking-controls label{font-weight:650;font-size:14px}.tracking-controls select{padding:9px;border:1px solid #c7dad3;border-radius:9px}.tracking-note{font-size:13px;color:#57766e;line-height:1.5}
 </style></head><body>
 <header><h1>kine<span>Room</span></h1><div class="muted">Análisis cinemático de la marcha · Prototipo</div></header>
 <main>
@@ -15,10 +16,15 @@
 <div class="actions"><button id="to-calibration" disabled>Continuar al análisis</button></div></div>
 </section>
 <section id="screen-analysis" class="hidden">
-<h2>Análisis de marcha</h2><p class="muted">Aquí se realizará el seguimiento de marcadores, el respaldo de MediaPipe y la identificación automática de ciclos.</p>
-<div class="panel"><span class="pill">Función en desarrollo</span><p class="muted">Esta etapa todavía no analiza los videos. Para revisar la interfaz, puedes abrir una simulación claramente identificada con datos ficticios.</p>
-<div class="actions"><button class="secondary" data-back="videos">Volver</button><button id="demo-results">Ver ejemplo de resultados ficticios</button></div></div>
-</section>
+<h2>Análisis de marcha · Seguimiento corporal</h2>
+<p class="muted">Reproduce el video para visualizar los puntos corporales detectados por MediaPipe. Esta primera etapa es una prueba visual del seguimiento, no una medición articular.</p>
+<div class="panel">
+<div class="tracking-controls"><label for="track-side">Video a revisar</label><select id="track-side"><option value="right">Extremidad derecha</option><option value="left">Extremidad izquierda</option></select><button id="track-start">Iniciar seguimiento</button><button class="secondary" id="track-stop">Detener</button></div>
+<div class="tracker"><video id="track-video" controls playsinline></video><canvas id="track-overlay"></canvas></div>
+<p class="status" id="track-status" role="status">Selecciona un video y pulsa «Iniciar seguimiento».</p>
+<p class="tracking-note">Los puntos verdes representan estimaciones de MediaPipe. Todavía no se detectan marcadores físicos ni se calculan ángulos o ciclos. Si la persona no aparece de perfil o sale del encuadre, el seguimiento puede perderse.</p>
+<div class="actions"><button class="secondary" data-back="videos">Volver</button><button id="demo-results">Ver ejemplo de resultados ficticios</button></div>
+</div></section>
 <section id="screen-results" class="hidden">
 <div class="row"><h2>Resultados de marcha</h2><span class="pill">SIMULACIÓN · NO CLÍNICO</span></div>
 <p class="muted">Valores de ejemplo, no calculados a partir de los videos cargados.</p>
@@ -30,15 +36,64 @@
 </main>
 <script>
 const screens=['videos','analysis','results'];let active='videos';const urls={right:null,left:null};
-function show(name){screens.forEach(s=>document.getElementById('screen-'+s).classList.toggle('hidden',s!==name));active=name;window.scrollTo({top:0,behavior:'smooth'});}
+function show(name){if(active==='analysis'&&name!=='analysis'&&typeof stopTracking==='function')stopTracking();screens.forEach(s=>document.getElementById('screen-'+s).classList.toggle('hidden',s!==name));active=name;window.scrollTo({top:0,behavior:'smooth'});}
 function ready(){document.getElementById('to-calibration').disabled=!(document.getElementById('file-right').files.length&&document.getElementById('file-left').files.length);}
 for(const side of ['right','left']){const inp=document.getElementById('file-'+side),preview=document.getElementById('preview-'+side),label=document.getElementById('name-'+side);inp.addEventListener('change',()=>{if(urls[side])URL.revokeObjectURL(urls[side]);const file=inp.files[0];if(file){urls[side]=URL.createObjectURL(file);preview.src=urls[side];preview.classList.remove('hidden');label.textContent=file.name;}else{urls[side]=null;preview.removeAttribute('src');preview.load();preview.classList.add('hidden');label.textContent='Sin video seleccionado';}ready();});}
-document.getElementById('to-calibration').onclick=()=>show('analysis');
+document.getElementById('to-calibration').onclick=()=>{show('analysis');selectTrackingVideo();};
 
 
 document.getElementById('demo-results').onclick=()=>show('results');
 document.querySelectorAll('[data-back]').forEach(b=>b.onclick=()=>show(b.dataset.back));
 document.getElementById('restart').onclick=()=>show('videos');
+
+let trackerPose=null,trackerActive=false,trackerBusy=false,trackerLast=-1,trackerFrame=0;
+const trackVideo=document.getElementById('track-video'),trackCanvas=document.getElementById('track-overlay'),trackStatus=document.getElementById('track-status');
+const trackCtx=trackCanvas.getContext('2d');
+function trackingMessage(t){trackStatus.textContent=t;}
+function selectTrackingVideo(){stopTracking();const side=document.getElementById('track-side').value;trackVideo.src=urls[side]||'';trackVideo.load();trackingMessage('Video '+(side==='right'?'derecho':'izquierdo')+' listo. Pulsa «Iniciar seguimiento».');}
+document.getElementById('track-side').addEventListener('change',selectTrackingVideo);
+function clearTracking(){trackCtx.clearRect(0,0,trackCanvas.width,trackCanvas.height);}
+function stopTracking(){trackerActive=false;cancelAnimationFrame(trackerFrame);trackVideo.pause();clearTracking();}
+document.getElementById('track-stop').onclick=()=>{stopTracking();trackingMessage('Seguimiento detenido.');};
+function drawTracking(results){
+ const v=results.image;if(!v)return;
+ const w=v.videoWidth||v.width,h=v.videoHeight||v.height;
+ if(!w||!h)return;
+ if(trackCanvas.width!==w||trackCanvas.height!==h){trackCanvas.width=w;trackCanvas.height=h;}
+ clearTracking();
+ const points=results.poseLandmarks;if(!points){trackingMessage('No se detectó una persona con suficiente confianza en este fotograma.');return;}
+ const connections=[[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[27,29],[29,31],[24,26],[26,28],[28,30],[30,32]];
+ trackCtx.lineWidth=Math.max(2,w/270);trackCtx.strokeStyle='#54d9b4';trackCtx.fillStyle='#f6a451';
+ for(const [i,j] of connections){const p=points[i],q=points[j];if((p.visibility??1)<.45||(q.visibility??1)<.45)continue;trackCtx.beginPath();trackCtx.moveTo(p.x*w,p.y*h);trackCtx.lineTo(q.x*w,q.y*h);trackCtx.stroke();}
+ for(const i of [11,12,23,24,25,26,27,28,29,30,31,32]){const p=points[i];if((p.visibility??1)<.45)continue;trackCtx.beginPath();trackCtx.arc(p.x*w,p.y*h,Math.max(3,w/160),0,Math.PI*2);trackCtx.fill();}
+ trackingMessage('MediaPipe detecta la postura. Puntos verdes: segmentos estimados; puntos naranjos: articulaciones estimadas. No son marcadores físicos.');
+}
+async function loadTracker(){
+ if(trackerPose)return trackerPose;
+ if(typeof Pose==='undefined')throw new Error('No se cargó MediaPipe. Comprueba la conexión a internet y vuelve a intentarlo.');
+ const p=new Pose({locateFile:file=>'https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/'+file});
+ p.setOptions({modelComplexity:1,smoothLandmarks:true,minDetectionConfidence:.55,minTrackingConfidence:.5});
+ p.onResults(drawTracking);trackerPose=p;return p;
+}
+async function trackLoop(){
+ if(!trackerActive)return;
+ if(!trackerBusy&&trackVideo.readyState>=2&&!trackVideo.paused&&trackVideo.currentTime!==trackerLast){
+   trackerBusy=true;trackerLast=trackVideo.currentTime;
+   try{await trackerPose.send({image:trackVideo});}
+   catch(err){stopTracking();trackingMessage('Error durante el seguimiento: '+err.message);return;}
+   finally{trackerBusy=false;}
+ }
+ if(trackerActive)trackerFrame=requestAnimationFrame(trackLoop);
+}
+document.getElementById('track-start').onclick=async()=>{
+ const side=document.getElementById('track-side').value;
+ if(!urls[side]){trackingMessage('Carga primero el video de esta extremidad.');return;}
+ stopTracking();trackingMessage('Cargando MediaPipe…');
+ try{await loadTracker();trackerLast=-1;await trackVideo.play();trackerActive=true;trackingMessage('Procesando video…');trackLoop();}
+ catch(err){trackingMessage('No se pudo iniciar: '+err.message);}
+};
+trackVideo.addEventListener('ended',()=>{trackerActive=false;cancelAnimationFrame(trackerFrame);trackingMessage('Video finalizado. Puedes volver a reproducirlo para revisar el seguimiento.');});
+
 const joints=[
 {name:'Cadera',right:[18,15,9,1,-5,-9,-4,5,16,22,18],left:[25,20,12,3,-6,-12,-7,9,22,29,25],min:-20,max:40,ro:[0,1,-2],lo:[0,-1,1],labels:['Flexión máxima','Extensión máxima','ROM']},
 {name:'Rodilla',right:[8,14,10,7,12,28,44,49,36,18,8],left:[6,13,9,6,12,38,60,66,47,20,6],min:0,max:80,ro:[0,2,-1],lo:[0,-2,1],labels:['Flexión máxima','Extensión máxima','ROM']},
@@ -97,4 +152,4 @@ async function downloadExcel(){
  }catch(e){alert('No se pudo generar el Excel: '+e.message);}finally{btn.disabled=false;btn.textContent='⬇ Descargar resultados en Excel (.xlsx)';}
 }
 document.getElementById('download-excel').addEventListener('click',downloadExcel);
-</script><script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script></body></html>
+</script><script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/pose.js"></script><script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script></body></html>
