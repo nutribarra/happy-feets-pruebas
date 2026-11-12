@@ -21,7 +21,7 @@
 <div class="panel">
 <div class="tracking-controls"><label for="track-side">Video a revisar</label><select id="track-side"><option value="right">Extremidad derecha</option><option value="left">Extremidad izquierda</option></select><button id="track-start">Iniciar seguimiento</button><button class="secondary" id="track-stop">Detener</button></div>
 <div class="tracker"><video id="track-video" controls playsinline></video><canvas id="track-overlay"></canvas></div>
-<p class="status" id="track-status" role="status">Selecciona un video y pulsa «Iniciar seguimiento».</p>
+<p class="tracking-note" id="track-count">Fotogramas registrados: 0 · Puntos: hombro, cadera, rodilla, tobillo y pie de la extremidad seleccionada.</p><p class="status" id="track-status" role="status">Selecciona un video y pulsa «Iniciar seguimiento».</p>
 <p class="tracking-note">Los puntos verdes representan estimaciones de MediaPipe. Todavía no se detectan marcadores físicos ni se calculan ángulos o ciclos. Si la persona no aparece de perfil o sale del encuadre, el seguimiento puede perderse.</p>
 <div class="actions"><button class="secondary" data-back="videos">Volver</button><button id="demo-results">Ver ejemplo de resultados ficticios</button></div>
 </div></section>
@@ -38,7 +38,7 @@
 const screens=['videos','analysis','results'];let active='videos';const urls={right:null,left:null};
 function show(name){if(active==='analysis'&&name!=='analysis'&&typeof stopTracking==='function')stopTracking();screens.forEach(s=>document.getElementById('screen-'+s).classList.toggle('hidden',s!==name));active=name;window.scrollTo({top:0,behavior:'smooth'});}
 function ready(){document.getElementById('to-calibration').disabled=!(document.getElementById('file-right').files.length&&document.getElementById('file-left').files.length);}
-for(const side of ['right','left']){const inp=document.getElementById('file-'+side),preview=document.getElementById('preview-'+side),label=document.getElementById('name-'+side);inp.addEventListener('change',()=>{if(urls[side])URL.revokeObjectURL(urls[side]);const file=inp.files[0];if(file){urls[side]=URL.createObjectURL(file);preview.src=urls[side];preview.classList.remove('hidden');label.textContent=file.name;}else{urls[side]=null;preview.removeAttribute('src');preview.load();preview.classList.add('hidden');label.textContent='Sin video seleccionado';}ready();});}
+for(const side of ['right','left']){const inp=document.getElementById('file-'+side),preview=document.getElementById('preview-'+side),label=document.getElementById('name-'+side);inp.addEventListener('change',()=>{if(urls[side])URL.revokeObjectURL(urls[side]);const file=inp.files[0];if(file){capturedPoints[side]=[];if(typeof updateTrackCount==='function')updateTrackCount();urls[side]=URL.createObjectURL(file);preview.src=urls[side];preview.classList.remove('hidden');label.textContent=file.name;}else{capturedPoints[side]=[];if(typeof updateTrackCount==='function')updateTrackCount();urls[side]=null;preview.removeAttribute('src');preview.load();preview.classList.add('hidden');label.textContent='Sin video seleccionado';}ready();});}
 document.getElementById('to-calibration').onclick=()=>{show('analysis');selectTrackingVideo();};
 
 
@@ -49,8 +49,13 @@ document.getElementById('restart').onclick=()=>show('videos');
 let trackerPose=null,trackerActive=false,trackerBusy=false,trackerLast=-1,trackerFrame=0;
 const trackVideo=document.getElementById('track-video'),trackCanvas=document.getElementById('track-overlay'),trackStatus=document.getElementById('track-status');
 const trackCtx=trackCanvas.getContext('2d');
+const capturedPoints={right:[],left:[]};let captureTime=0;
+const trackCount=document.getElementById('track-count');
+const landmarkIndices={right:[12,24,26,28,32],left:[11,23,25,27,31]};
+const landmarkNames=['hombro','cadera','rodilla','tobillo','pie'];
+function updateTrackCount(){const side=document.getElementById('track-side').value;trackCount.textContent='Fotogramas registrados ('+(side==='right'?'derecha':'izquierda')+'): '+capturedPoints[side].length+' · Hombro, cadera, rodilla, tobillo y pie.';}
 function trackingMessage(t){trackStatus.textContent=t;}
-function selectTrackingVideo(){stopTracking();const side=document.getElementById('track-side').value;trackVideo.src=urls[side]||'';trackVideo.load();trackingMessage('Video '+(side==='right'?'derecho':'izquierdo')+' listo. Pulsa «Iniciar seguimiento».');}
+function selectTrackingVideo(){stopTracking();updateTrackCount();const side=document.getElementById('track-side').value;trackVideo.src=urls[side]||'';trackVideo.load();trackingMessage('Video '+(side==='right'?'derecho':'izquierdo')+' listo. Pulsa «Iniciar seguimiento».');}
 document.getElementById('track-side').addEventListener('change',selectTrackingVideo);
 function clearTracking(){trackCtx.clearRect(0,0,trackCanvas.width,trackCanvas.height);}
 function stopTracking(){trackerActive=false;cancelAnimationFrame(trackerFrame);trackVideo.pause();clearTracking();}
@@ -62,11 +67,21 @@ function drawTracking(results){
  if(trackCanvas.width!==w||trackCanvas.height!==h){trackCanvas.width=w;trackCanvas.height=h;}
  clearTracking();
  const points=results.poseLandmarks;if(!points){trackingMessage('No se detectó una persona con suficiente confianza en este fotograma.');return;}
- const connections=[[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[27,29],[29,31],[24,26],[26,28],[28,30],[30,32]];
+ const side=document.getElementById('track-side').value;
+ const ids=landmarkIndices[side];
+ const joints=ids.map((id,i)=>{const p=points[id];return {name:landmarkNames[i],x:p.x,y:p.y,visibility:p.visibility??1};});
+ // Captura únicamente puntos del lado seleccionado, con tiempo relativo al video.
+ // Las coordenadas se guardan normalizadas (0–1) y NO son marcadores físicos.
+ const t=Number(captureTime.toFixed(4));
+ if(!capturedPoints[side].some(row=>Math.abs(row.time-t)<.0001)){
+   capturedPoints[side].push({time:t,points:joints.map(p=>({...p}))});
+   updateTrackCount();
+ }
+ const pairs=[[0,1],[1,2],[2,3],[3,4]];
  trackCtx.lineWidth=Math.max(2,w/270);trackCtx.strokeStyle='#54d9b4';trackCtx.fillStyle='#f6a451';
- for(const [i,j] of connections){const p=points[i],q=points[j];if((p.visibility??1)<.45||(q.visibility??1)<.45)continue;trackCtx.beginPath();trackCtx.moveTo(p.x*w,p.y*h);trackCtx.lineTo(q.x*w,q.y*h);trackCtx.stroke();}
- for(const i of [11,12,23,24,25,26,27,28,29,30,31,32]){const p=points[i];if((p.visibility??1)<.45)continue;trackCtx.beginPath();trackCtx.arc(p.x*w,p.y*h,Math.max(3,w/160),0,Math.PI*2);trackCtx.fill();}
- trackingMessage('MediaPipe detecta la postura. Puntos verdes: segmentos estimados; puntos naranjos: articulaciones estimadas. No son marcadores físicos.');
+ for(const [i,j] of pairs){const p=joints[i],q=joints[j];if(p.visibility<.45||q.visibility<.45)continue;trackCtx.beginPath();trackCtx.moveTo(p.x*w,p.y*h);trackCtx.lineTo(q.x*w,q.y*h);trackCtx.stroke();}
+ for(const p of joints){if(p.visibility<.45)continue;trackCtx.beginPath();trackCtx.arc(p.x*w,p.y*h,Math.max(3,w/160),0,Math.PI*2);trackCtx.fill();}
+ trackingMessage('Seguimiento de extremidad '+(side==='right'?'derecha':'izquierda')+'. Se registran coordenadas y tiempo por fotograma procesado. Los puntos son estimaciones de MediaPipe.');
 }
 async function loadTracker(){
  if(trackerPose)return trackerPose;
@@ -78,7 +93,7 @@ async function loadTracker(){
 async function trackLoop(){
  if(!trackerActive)return;
  if(!trackerBusy&&trackVideo.readyState>=2&&!trackVideo.paused&&trackVideo.currentTime!==trackerLast){
-   trackerBusy=true;trackerLast=trackVideo.currentTime;
+   trackerBusy=true;trackerLast=trackVideo.currentTime;captureTime=trackerLast;
    try{await trackerPose.send({image:trackVideo});}
    catch(err){stopTracking();trackingMessage('Error durante el seguimiento: '+err.message);return;}
    finally{trackerBusy=false;}
