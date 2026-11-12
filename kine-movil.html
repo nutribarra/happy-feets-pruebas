@@ -140,46 +140,6 @@ async function startAutoAnalysis(){
 }
 document.getElementById('auto-retry').onclick=startAutoAnalysis;
 document.getElementById('auto-back').onclick=()=>{stopTracking();show('videos');};
-const joints=ids.map((id,i)=>{const p=points[id];return {name:landmarkNames[i],x:p.x,y:p.y,visibility:p.visibility??1};});
- // Captura únicamente puntos del lado seleccionado, con tiempo relativo al video.
- // Las coordenadas se guardan normalizadas (0–1) y NO son marcadores físicos.
- const t=Number(captureTime.toFixed(4));
- if(!capturedPoints[side].some(row=>Math.abs(row.time-t)<.0001)){
-   capturedPoints[side].push({time:t,points:joints.map(p=>({...p}))});
-   updateTrackCount();
- }
- const pairs=[[0,1],[1,2],[2,3],[3,4]];
- trackCtx.lineWidth=Math.max(2,w/270);trackCtx.strokeStyle='#54d9b4';trackCtx.fillStyle='#f6a451';
- for(const [i,j] of pairs){const p=joints[i],q=joints[j];if(p.visibility<.45||q.visibility<.45)continue;trackCtx.beginPath();trackCtx.moveTo(p.x*w,p.y*h);trackCtx.lineTo(q.x*w,q.y*h);trackCtx.stroke();}
- for(const p of joints){if(p.visibility<.45)continue;trackCtx.beginPath();trackCtx.arc(p.x*w,p.y*h,Math.max(3,w/160),0,Math.PI*2);trackCtx.fill();}
- trackingMessage('Seguimiento de extremidad '+(side==='right'?'derecha':'izquierda')+'. Se registran coordenadas y tiempo por fotograma procesado. Los puntos son estimaciones de MediaPipe.');
-}
-async function loadTracker(){
- if(trackerPose)return trackerPose;
- if(typeof Pose==='undefined')throw new Error('No se cargó MediaPipe. Comprueba la conexión a internet y vuelve a intentarlo.');
- const p=new Pose({locateFile:file=>'https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/'+file});
- p.setOptions({modelComplexity:1,smoothLandmarks:true,minDetectionConfidence:.55,minTrackingConfidence:.5});
- p.onResults(drawTracking);trackerPose=p;return p;
-}
-async function trackLoop(){
- if(!trackerActive)return;
- if(!trackerBusy&&trackVideo.readyState>=2&&!trackVideo.paused&&trackVideo.currentTime!==trackerLast){
-   trackerBusy=true;trackerLast=trackVideo.currentTime;captureTime=trackerLast;
-   try{await trackerPose.send({image:trackVideo});}
-   catch(err){stopTracking();trackingMessage('Error durante el seguimiento: '+err.message);return;}
-   finally{trackerBusy=false;}
- }
- if(trackerActive)trackerFrame=requestAnimationFrame(trackLoop);
-}
-document.getElementById('track-start').onclick=async()=>{
- const side=document.getElementById('track-side').value;
- if(!urls[side]){trackingMessage('Carga primero el video de esta extremidad.');return;}
- stopTracking();trackingMessage('Cargando MediaPipe…');
- try{await loadTracker();trackerLast=-1;await trackVideo.play();trackerActive=true;trackingMessage('Procesando video…');trackLoop();}
- catch(err){trackingMessage('No se pudo iniciar: '+err.message);}
-};
-trackVideo.addEventListener('ended',()=>{trackerActive=false;cancelAnimationFrame(trackerFrame);trackingMessage('Video finalizado. Puedes volver a reproducirlo para revisar el seguimiento.');});
-
 const joints=[
 {name:'Cadera',right:[18,15,9,1,-5,-9,-4,5,16,22,18],left:[25,20,12,3,-6,-12,-7,9,22,29,25],min:-20,max:40,ro:[0,1,-2],lo:[0,-1,1],labels:['Flexión máxima','Extensión máxima','ROM']},
 {name:'Rodilla',right:[8,14,10,7,12,28,44,49,36,18,8],left:[6,13,9,6,12,38,60,66,47,20,6],min:0,max:80,ro:[0,2,-1],lo:[0,-2,1],labels:['Flexión máxima','Extensión máxima','ROM']},
