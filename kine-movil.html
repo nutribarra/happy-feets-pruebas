@@ -28,7 +28,7 @@
 <div id="review-list"></div><div id="visual-review" class="panel hidden"><h3>Revisión visual de marcadores</h3><div class="review-controls"><label>Extremidad <select id="review-side"><option value="right">Derecha</option><option value="left">Izquierda</option></select></label><label>Marcador <select id="review-point"><option value="0">Acromion</option><option value="1">Trocánter mayor</option><option value="2">Cóndilo femoral lateral</option><option value="3">Maléolo lateral</option><option value="4">Quinto metatarsiano</option></select></label></div><div class="review-controls"><button type="button" class="secondary" id="review-prev">Anterior</button><input type="range" id="review-slider" min="0" max="0" value="0" style="flex:1;min-width:90px"><button type="button" class="secondary" id="review-next">Siguiente</button></div><p id="review-frame-info" class="muted"></p><canvas id="review-canvas" class="review-canvas" width="640" height="360" aria-label="Fotograma con puntos de seguimiento; tocar para corregir el marcador seleccionado"></canvas><p class="review-legend"><span class="orange">● Naranja: candidato detectado</span><span class="blue">● Azul: estimación MediaPipe</span><span class="purple">● Morado: corrección manual</span></p><p class="muted">Se muestran prioritariamente los fotogramas con puntos estimados o de baja visibilidad. Para corregir un punto, selecciona su nombre y toca su posición real en la imagen. La corrección se guarda en este análisis, sin alterar otros fotogramas.</p><div class="actions"><button class="secondary" type="button" id="review-undo">Deshacer corrección de este punto</button></div></div>
 </div>
 <div id="auto-finish" class="hidden notice">El seguimiento automático finalizó. Las coordenadas se registraron en memoria; aún faltan la validación del detector de marcadores físicos, la corrección manual, los cálculos articulares y los ciclos para generar resultados reales. No se mostrará un informe clínico con datos ficticios.</div>
-<div class="actions"><button id="auto-retry" class="secondary hidden">Repetir análisis</button><button id="auto-back" class="secondary">Volver a los videos</button><button id="demo-results" class="secondary">Ver resultados ficticios (demostración)</button></div>
+<div class="actions"><button id="retry-right" class="secondary hidden">Reintentar derecha</button><button id="retry-left" class="secondary hidden">Reintentar izquierda</button><button id="auto-retry" class="secondary hidden">Repetir análisis completo</button><button id="auto-back" class="secondary">Volver a los videos</button><button id="demo-results" class="secondary">Ver resultados ficticios (demostración)</button></div>
 </div>
 <video id="auto-video" muted playsinline preload="auto" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"></video>
 </section>
@@ -87,6 +87,7 @@ const analysisVideos={right:document.getElementById('preview-right'),left:docume
 let currentAnalysisVideo=autoVideo;
 let autoPose=null,autoCancelled=false,autoRunning=false,autoSide='right',autoTime=0;
 const reviewFlags={right:[],left:[]};
+const sideStatus={right:'pending',left:'pending'};
 // Physical marker matches are provisional; MediaPipe-only points require review.
 const markerStats={right:{physical:0,estimated:0},left:{physical:0,estimated:0}};
 const markerCanvas=document.createElement('canvas'),markerCtx=markerCanvas.getContext('2d',{willReadFrequently:true});
@@ -192,9 +193,10 @@ async function prepareAutoVideo(side){
  const v=analysisVideos[side];currentAnalysisVideo=v;
  v.muted=true;v.playsInline=true;v.preload='auto';
  if(!urls[side])urls[side]=URL.createObjectURL(file);
- if(!v.src||v.src!==urls[side]||v.error){v.removeAttribute('src');v.load();v.src=urls[side];v.load();}
+ if(!v.src||v.src!==urls[side]||v.error){v.pause();v.removeAttribute('src');v.load();v.src=urls[side];v.load();}
  // Reuse the preview already decoded by Android instead of opening a hidden decoder.
  if(v.readyState<1)await waitForEvent(v,'loadedmetadata',30000);
+ if(v.error)throw Error(videoErrorDescription(v));
  if(!Number.isFinite(v.duration)||v.duration<=0)throw Error('Duración de video no válida.');
  return v.duration;
 }
@@ -202,8 +204,9 @@ async function seekAuto(time){
  const v=currentAnalysisVideo;
  if(Math.abs(v.currentTime-time)<.002&&v.readyState>=2)return;
  const promise=waitForEvent(v,'seeked',30000);
- v.currentTime=time;
+ try{v.currentTime=time;}catch(e){throw Error('No se pudo avanzar al fotograma: '+e.message);}
  await promise;
+ if(v.error)throw Error(videoErrorDescription(v));
  // Android may report seeked before the first decoded frame is available.
  if(v.readyState<2){
   try{await waitForEvent(v,'loadeddata',8000);}
@@ -278,60 +281,91 @@ function renderReview(){
  document.getElementById('visual-review').classList.toggle('hidden',!hasFrames);
  if(hasFrames){if(!capturedPoints[reviewSide()].length)document.getElementById('review-side').value=capturedPoints.right.length?'right':'left';reviewIndex=0;drawReview();}
 }
-async function startAutoAnalysis(){
+async function runSide(side,pose){
+ autoSide=side;
+ const si=side==='right'?0:1;
+ capturedPoints[side]=[];reviewFlags[side]=[];lastMarker[side]=Array(5).fill(null);markerStats[side]={physical:0,estimated:0};
+ sideStatus[side]='running';
+ autoState(side,'Preparando video…');
+ let lastError=null;
+ // Two attempts for the selected side only. Preserve the other side's data.
+ for(let attempt=0;attempt<2;attempt++){
+  if(autoCancelled)throw Error('Análisis interrumpido.');
+  try{
+   if(attempt){
+    const v=analysisVideos[side];v.pause();v.removeAttribute('src');v.load();
+    v.src=urls[side];v.load();
+    autoState(side,'Reintentando lectura del video…');
+    await new Promise(resolve=>setTimeout(resolve,350));
+   }
+   const duration=await prepareAutoVideo(side);
+   const count=Math.min(600,Math.max(1,Math.ceil(duration*10)));
+   // If the decoder fails partway through, discard the partial attempt to avoid duplicate timestamps.
+   capturedPoints[side]=[];reviewFlags[side]=[];lastMarker[side]=Array(5).fill(null);markerStats[side]={physical:0,estimated:0};
+   for(let i=0;i<count;i++){
+    if(autoCancelled)throw Error('Análisis interrumpido.');
+    const t=Math.min(duration-.001,i*duration/count);
+    await seekAuto(t);autoTime=t;
+    await pose.send({image:currentAnalysisVideo});
+    const pct=Math.round(((si+(i+1)/count)/2)*100);
+    document.getElementById('auto-progress').value=pct;
+    if(i%5===0||i===count-1){
+     autoState(side,Math.round((i+1)/count*100)+'% · '+capturedPoints[side].length+' fotogramas');
+     autoMessage('Analizando extremidad '+(side==='right'?'derecha':'izquierda')+'… '+pct+'% total');
+     await new Promise(resolve=>setTimeout(resolve,0));
+    }
+   }
+   sideStatus[side]='done';autoState(side,'Completado · '+capturedPoints[side].length+' fotogramas');
+   return true;
+  }catch(e){
+   lastError=e;
+   if(autoCancelled)break;
+  }
+ }
+ sideStatus[side]='error';
+ autoState(side,'Error · '+(lastError?.message||'No se pudo leer el video'));
+ return false;
+}
+function updateRetryControls(){
+ for(const side of ['right','left']){
+  const b=document.getElementById('retry-'+side);
+  b.classList.toggle('hidden',sideStatus[side]==='done'||autoRunning);
+  b.disabled=autoRunning;
+ }
+ document.getElementById('auto-retry').classList.toggle('hidden',autoRunning);
+}
+async function startAutoAnalysis(onlySide=null){
  if(autoRunning)return;
  autoRunning=true;autoCancelled=false;
- document.getElementById('auto-retry').classList.add('hidden');
  document.getElementById('auto-finish').classList.add('hidden');
  document.getElementById('review-area').classList.add('hidden');
- document.getElementById('auto-progress').value=0;
- for(const side of ['right','left']){capturedPoints[side]=[];reviewFlags[side]=[];lastMarker[side]=Array(5).fill(null);markerStats[side]={physical:0,estimated:0};autoState(side,'Pendiente');}
- const failures=[];
+ document.getElementById('auto-retry').classList.add('hidden');
+ for(const side of ['right','left'])document.getElementById('retry-'+side).classList.add('hidden');
+ if(!onlySide){
+  document.getElementById('auto-progress').value=0;
+  for(const side of ['right','left']){
+   capturedPoints[side]=[];reviewFlags[side]=[];lastMarker[side]=Array(5).fill(null);markerStats[side]={physical:0,estimated:0};
+   sideStatus[side]='pending';autoState(side,'Pendiente');
+  }
+ }
  try{
   const pose=await loadAutoPose();
-  for(let si=0;si<2;si++){
-   const side=['right','left'][si];autoSide=side;
+  for(const side of (onlySide?[onlySide]:['right','left'])){
    if(autoCancelled)break;
-   try{
-    autoState(side,'Cargando video…');
-    autoMessage('Preparando extremidad '+(side==='right'?'derecha':'izquierda')+'…');
-    let duration;
-     try{duration=await prepareAutoVideo(side);}catch(e){
-       // Retry a fresh decoder for intermittent Android video errors.
-       const v=analysisVideos[side];v.removeAttribute('src');v.load();
-       duration=await prepareAutoVideo(side);
-     }
-    const count=Math.min(600,Math.max(1,Math.ceil(duration*10)));
-    for(let i=0;i<count;i++){
-     if(autoCancelled)throw Error('Análisis interrumpido.');
-     const t=Math.min(duration-.001,i*duration/count);
-     await seekAuto(t);autoTime=t;
-     await pose.send({image:currentAnalysisVideo});
-     const pct=Math.round(((si+(i+1)/count)/2)*100);
-     document.getElementById('auto-progress').value=pct;
-     if(i%5===0||i===count-1){
-      autoState(side,Math.round((i+1)/count*100)+'% · '+capturedPoints[side].length+' fotogramas');
-      autoMessage('Analizando extremidad '+(side==='right'?'derecha':'izquierda')+'… '+pct+'% total');
-      await new Promise(res=>setTimeout(res,0));
-     }
-    }
-    autoState(side,'Completado · '+capturedPoints[side].length+' fotogramas');
-   }catch(err){
-    failures.push((side==='right'?'Derecha':'Izquierda')+': '+err.message);
-    autoState(side,'Error · '+err.message);
-    document.getElementById('auto-progress').value=si*50;
-   }
+   await runSide(side,pose);
   }
-  const totalFrames=capturedPoints.right.length+capturedPoints.left.length;
   if(autoCancelled)autoMessage('Análisis interrumpido.');
-  else if(!totalFrames)autoMessage('No se procesaron fotogramas. '+failures.join(' | ')+'. Vuelve a seleccionar los videos o comprueba su formato.');
-  else if(failures.length)autoMessage('Procesamiento parcial. '+failures.join(' | ')+'. Los fotogramas obtenidos se conservan.');
-  else autoMessage('Seguimiento automático de ambas extremidades completado.');
-  if(!autoCancelled&&totalFrames>0){renderReview();document.getElementById('auto-finish').classList.remove('hidden');}
- }catch(err){autoMessage('No se pudo iniciar MediaPipe: '+err.message);}
- finally{autoRunning=false;document.getElementById('auto-retry').classList.remove('hidden');}
+  else if(sideStatus.right==='done'&&sideStatus.left==='done')autoMessage('Seguimiento automático de ambas extremidades completado.');
+  else autoMessage('Procesamiento parcial. Puedes reintentar únicamente el lado que falló sin perder el otro.');
+  if(!autoCancelled&&(capturedPoints.right.length||capturedPoints.left.length)){
+   renderReview();document.getElementById('auto-finish').classList.remove('hidden');
+  }
+ }catch(e){autoMessage('No se pudo iniciar el procesamiento: '+e.message);}
+ finally{autoRunning=false;updateRetryControls();}
 }
-document.getElementById('auto-retry').onclick=startAutoAnalysis;
+document.getElementById('auto-retry').onclick=()=>startAutoAnalysis();
+document.getElementById('retry-right').onclick=()=>startAutoAnalysis('right');
+document.getElementById('retry-left').onclick=()=>startAutoAnalysis('left');
 document.getElementById('auto-back').onclick=()=>{stopTracking();show('videos');};
 const joints=[
 {name:'Cadera',right:[18,15,9,1,-5,-9,-4,5,16,22,18],left:[25,20,12,3,-6,-12,-7,9,22,29,25],min:-20,max:40,ro:[0,1,-2],lo:[0,-1,1],labels:['Flexión máxima','Extensión máxima','ROM']},
