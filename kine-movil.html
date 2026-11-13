@@ -25,7 +25,7 @@
 <div id="review-area" class="hidden">
 <h3>Revisión de seguimiento</h3>
 <p class="muted">El detector busca marcadores circulares naranjos cerca de los cinco puntos anatómicos. Cuando no encuentra uno, conserva la estimación de MediaPipe y la identifica como tal. Las asociaciones requieren revisión visual; la corrección manual todavía está pendiente.</p>
-<div id="review-list"></div><div id="visual-review" class="panel hidden"><h3>Revisión visual de marcadores</h3><div class="review-controls"><label>Extremidad <select id="review-side"><option value="right">Derecha</option><option value="left">Izquierda</option></select></label><label>Marcador <select id="review-point"><option value="0">Acromion</option><option value="1">Trocánter mayor</option><option value="2">Cóndilo femoral lateral</option><option value="3">Maléolo lateral</option><option value="4">Quinto metatarsiano</option></select></label></div><div class="review-controls"><button type="button" class="secondary" id="review-prev">Anterior</button><input type="range" id="review-slider" min="0" max="0" value="0" style="flex:1;min-width:90px"><button type="button" class="secondary" id="review-next">Siguiente</button></div><p id="review-frame-info" class="muted"></p><canvas id="review-canvas" class="review-canvas" width="640" height="360" aria-label="Fotograma con puntos de seguimiento; tocar para corregir el marcador seleccionado"></canvas><p class="review-legend"><span class="orange">● Naranja: candidato detectado</span><span class="blue">● Azul: estimación MediaPipe</span><span class="purple">● Morado: corrección manual</span></p><p class="muted">Se muestran prioritariamente los fotogramas con puntos estimados o de baja visibilidad. Para corregir un punto, selecciona su nombre y toca su posición real en la imagen. La corrección se guarda en este análisis, sin alterar otros fotogramas.</p><div class="actions"><button class="secondary" type="button" id="review-undo">Deshacer corrección de este punto</button></div></div>
+<div id="review-list"></div><div id="visual-review" class="panel hidden"><h3>Revisión visual de marcadores</h3><div class="review-controls" role="group" aria-label="Modo de revisión"><button type="button" id="mode-auto" aria-pressed="true">Automático</button><button type="button" class="secondary" id="mode-manual" aria-pressed="false">Manual</button></div><p class="muted" id="mode-help">Reproduce los fotogramas analizados con los cinco puntos superpuestos. Pausa para corregir un punto.</p><div class="review-controls"><label>Extremidad <select id="review-side"><option value="right">Derecha</option><option value="left">Izquierda</option></select></label><label id="manual-point-label" class="hidden">Marcador <select id="review-point"><option value="0">Acromion</option><option value="1">Trocánter mayor</option><option value="2">Cóndilo femoral lateral</option><option value="3">Maléolo lateral</option><option value="4">Quinto metatarsiano</option></select></label></div><div class="review-controls hidden" id="manual-navigation"><button type="button" class="secondary" id="review-prev">Anterior</button><input type="range" id="review-slider" min="0" max="0" value="0" style="flex:1;min-width:90px"><button type="button" class="secondary" id="review-next">Siguiente</button></div><div id="auto-navigation" class="review-controls"><button type="button" id="auto-play">▶ Reproducir</button><input type="range" id="auto-slider" min="0" max="0" value="0" style="flex:1;min-width:90px" aria-label="Posición de reproducción"><label>Velocidad <select id="auto-speed"><option value="0.5">0,5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label><button type="button" class="secondary" id="auto-correct">Corregir este fotograma</button></div><p id="review-frame-info" class="muted"></p><canvas id="review-canvas" class="review-canvas" width="640" height="360" aria-label="Fotograma con puntos de seguimiento; tocar para corregir el marcador seleccionado"></canvas><p class="review-legend"><span class="orange">● Naranja: candidato detectado</span><span class="blue">● Azul: estimación MediaPipe</span><span class="purple">● Morado: corrección manual</span></p><p class="muted" id="manual-help" hidden>Se muestran prioritariamente los fotogramas con puntos estimados o de baja visibilidad. Para corregir un punto, selecciona su nombre y toca su posición real en la imagen. La corrección se guarda en este análisis, sin alterar otros fotogramas.</p><div class="actions hidden" id="manual-undo-area"><button class="secondary" type="button" id="review-undo">Deshacer corrección de este punto</button></div></div>
 </div>
 <div id="auto-finish" class="hidden notice">El seguimiento automático finalizó. Las coordenadas se registraron en memoria; aún faltan la validación del detector de marcadores físicos, la corrección manual, los cálculos articulares y los ciclos para generar resultados reales. No se mostrará un informe clínico con datos ficticios.</div>
 <div class="actions"><button id="retry-right" class="secondary hidden">Reintentar derecha</button><button id="retry-left" class="secondary hidden">Reintentar izquierda</button><button id="auto-retry" class="secondary hidden">Repetir análisis completo</button><button id="auto-back" class="secondary">Volver a los videos</button><button id="demo-results" class="secondary">Ver resultados ficticios (demostración)</button></div>
@@ -299,7 +299,7 @@ async function seekAuto(time){
  }
 }
 const reviewNames=['Acromion','Trocánter mayor','Cóndilo femoral lateral','Maléolo lateral','Quinto metatarsiano'];
-let reviewIndex=0,reviewRenderToken=0;
+let reviewIndex=0,reviewRenderToken=0,reviewMode='auto',autoIndex=0,autoPlaying=false,autoTimer=null;
 function reviewIndices(side){return capturedPoints[side].map((r,i)=>({r,i})).filter(({r})=>!r.points||r.points.some(p=>!p||p.source==='mediapipe-estimate'||p.source==='temporal-estimate'||p.visibility<.55)).map(({i})=>i);}
 function reviewAvailable(side){const bad=reviewIndices(side);return bad.length?bad:capturedPoints[side].map((_,i)=>i);}
 const reviewCanvas=document.getElementById('review-canvas'),reviewCtx=reviewCanvas.getContext('2d');
@@ -307,13 +307,14 @@ function reviewSide(){return document.getElementById('review-side').value;}
 async function drawReview(){
  const token=++reviewRenderToken,side=reviewSide(),records=capturedPoints[side];
  const slider=document.getElementById('review-slider');
- const available=reviewAvailable(side);
+ const available=reviewMode==='auto'?records.map((_,i)=>i):reviewAvailable(side);
  slider.max=Math.max(0,available.length-1);
  reviewIndex=Math.max(0,Math.min(reviewIndex,available.length-1));
  slider.value=reviewIndex;
+ if(reviewMode==='auto'){document.getElementById('auto-slider').max=Math.max(0,available.length-1);document.getElementById('auto-slider').value=reviewIndex;}
  if(!records.length){document.getElementById('review-frame-info').textContent='Sin fotogramas procesados para esta extremidad.';return;}
  const rec=records[available[reviewIndex]],v=analysisVideos[side];
- document.getElementById('review-frame-info').textContent='Punto por revisar '+(reviewIndex+1)+' de '+available.length+' · Fotograma '+(available[reviewIndex]+1)+' · '+rec.time.toFixed(2)+' s · Toca la imagen para corregir el marcador seleccionado.';
+ document.getElementById('review-frame-info').textContent=(reviewMode==='auto'?'Reproducción · Fotograma ':'Punto por revisar '+(reviewIndex+1)+' de '+available.length+' · Fotograma ')+(available[reviewIndex]+1)+' · '+rec.time.toFixed(2)+' s'+(reviewMode==='manual'?' · Toca la imagen para corregir el marcador seleccionado.':'');
  try{
   if(Math.abs(v.currentTime-rec.time)>.015){
    const waiting=waitForEvent(v,'seeked',10000);
@@ -336,12 +337,50 @@ async function drawReview(){
   });
  }catch(e){if(token===reviewRenderToken)document.getElementById('review-frame-info').textContent+=' · No se pudo mostrar el fotograma: '+e.message;}
 }
-document.getElementById('review-side').onchange=()=>{reviewIndex=0;drawReview();};
+function stopAuto(){autoPlaying=false;if(autoTimer!==null){clearTimeout(autoTimer);autoTimer=null;}document.getElementById('auto-play').textContent='▶ Reproducir';}
+function setReviewMode(mode,frame=null){
+ stopAuto();reviewMode=mode;
+ document.getElementById('mode-auto').classList.toggle('secondary',mode!=='auto');
+ document.getElementById('mode-manual').classList.toggle('secondary',mode!=='manual');
+ document.getElementById('mode-auto').setAttribute('aria-pressed',String(mode==='auto'));
+ document.getElementById('mode-manual').setAttribute('aria-pressed',String(mode==='manual'));
+ for(const id of ['manual-navigation','manual-point-label','manual-undo-area'])document.getElementById(id).classList.toggle('hidden',mode!=='manual');
+ document.getElementById('manual-help').hidden=mode!=='manual';
+ document.getElementById('auto-navigation').classList.toggle('hidden',mode!=='auto');
+ document.getElementById('mode-help').textContent=mode==='auto'?'Reproduce los fotogramas analizados con los cinco puntos superpuestos. Pausa para corregir un punto.':'Selecciona el marcador y corrige su posición tocando la imagen.';
+ if(frame!==null){const available=mode==='manual'?reviewAvailable(reviewSide()):capturedPoints[reviewSide()].map((_,i)=>i);reviewIndex=Math.max(0,available.indexOf(frame));}
+ else reviewIndex=0;
+ drawReview();
+}
+document.getElementById('mode-auto').onclick=()=>setReviewMode('auto');
+document.getElementById('mode-manual').onclick=()=>setReviewMode('manual');
+document.getElementById('auto-correct').onclick=()=>setReviewMode('manual',reviewIndex);
+document.getElementById('auto-slider').oninput=e=>{stopAuto();reviewIndex=Number(e.target.value);drawReview();};
+async function playAutoStep(){
+ if(!autoPlaying||reviewMode!=='auto')return;
+ const records=capturedPoints[reviewSide()];
+ if(reviewIndex>=records.length-1){stopAuto();return;}
+ const previous=reviewIndex;reviewIndex++;
+ await drawReview();
+ if(!autoPlaying)return;
+ const delta=Math.max(.04,(records[reviewIndex]?.time-records[previous]?.time)||.1);
+ const speed=Number(document.getElementById('auto-speed').value)||1;
+ autoTimer=setTimeout(playAutoStep,Math.max(30,delta*1000/speed));
+}
+document.getElementById('auto-play').onclick=()=>{
+ if(autoPlaying){stopAuto();return;}
+ if(!capturedPoints[reviewSide()].length)return;
+ if(reviewIndex>=capturedPoints[reviewSide()].length-1)reviewIndex=0;
+ autoPlaying=true;document.getElementById('auto-play').textContent='❚❚ Pausar';
+ drawReview().then(()=>{if(autoPlaying)autoTimer=setTimeout(playAutoStep,100);});
+};
+document.getElementById('review-side').onchange=()=>{stopAuto();reviewIndex=0;drawReview();};
 document.getElementById('review-point').onchange=()=>drawReview();
 document.getElementById('review-slider').oninput=e=>{reviewIndex=Number(e.target.value);drawReview();};
 document.getElementById('review-prev').onclick=()=>{reviewIndex=Math.max(0,reviewIndex-1);drawReview();};
 document.getElementById('review-next').onclick=()=>{reviewIndex=Math.min(reviewAvailable(reviewSide()).length-1,reviewIndex+1);drawReview();};
 reviewCanvas.addEventListener('click',e=>{
+ if(reviewMode!=='manual')return;
  const rec=capturedPoints[reviewSide()][reviewAvailable(reviewSide())[reviewIndex]];if(!rec?.points)return;
  const rect=reviewCanvas.getBoundingClientRect(),i=Number(document.getElementById('review-point').value);
  const x=(e.clientX-rect.left)/rect.width,y=(e.clientY-rect.top)/rect.height;
@@ -364,7 +403,7 @@ function renderReview(){
  document.getElementById('review-area').classList.remove('hidden');
  const hasFrames=capturedPoints.right.length+capturedPoints.left.length>0;
  document.getElementById('visual-review').classList.toggle('hidden',!hasFrames);
- if(hasFrames){if(!capturedPoints[reviewSide()].length)document.getElementById('review-side').value=capturedPoints.right.length?'right':'left';reviewIndex=0;drawReview();}
+ if(hasFrames){stopAuto();if(!capturedPoints[reviewSide()].length)document.getElementById('review-side').value=capturedPoints.right.length?'right':'left';setReviewMode('auto');}
 }
 async function runSide(side,pose){
  autoSide=side;
