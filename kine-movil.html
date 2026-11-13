@@ -303,6 +303,7 @@ function reviewAvailable(side){const bad=reviewIndices(side);return bad.length?b
 const reviewCanvas=document.getElementById('review-canvas'),reviewCtx=reviewCanvas.getContext('2d');
 function reviewSide(){return document.getElementById('review-side').value;}
 // Angles are exploratory 2D geometry, not validated clinical joint measurements.
+// Exploratory sagittal 2D angles. Positive hip flexion, knee flexion and ankle dorsiflexion.
 function geometricAngle(a,b,c){
  if(!a||!b||!c)return null;
  const ux=a.x-b.x,uy=a.y-b.y,vx=c.x-b.x,vy=c.y-b.y;
@@ -310,7 +311,30 @@ function geometricAngle(a,b,c){
  if(lu<.0001||lv<.0001)return null;
  return Math.acos(Math.max(-1,Math.min(1,(ux*vx+uy*vy)/(lu*lv))))*180/Math.PI;
 }
-function drawJointOverlay(points){
+function walkingDirection(records){
+ const xs=(records||[]).map(r=>r.points&&r.points[1]&&r.points[1].x).filter(Number.isFinite);
+ if(xs.length<2)return 0;
+ const n=Math.min(8,Math.max(1,Math.floor(xs.length/4)));
+ const first=xs.slice(0,n).reduce((a,b)=>a+b,0)/n;
+ const last=xs.slice(-n).reduce((a,b)=>a+b,0)/n;
+ return Math.abs(last-first)<.015?0:Math.sign(last-first);
+}
+function jointAngleValues(points,direction){
+ const [shoulder,hip,knee,ankle,foot]=points;
+ const hipInterior=geometricAngle(shoulder,hip,knee);
+ const kneeInterior=geometricAngle(hip,knee,ankle);
+ const ankleInterior=geometricAngle(knee,ankle,foot);
+ let hipAngle=null;
+ if(hipInterior!==null&&direction){
+  const ux=shoulder.x-hip.x,uy=shoulder.y-hip.y,vx=knee.x-hip.x,vy=knee.y-hip.y;
+  const cross=ux*vy-uy*vx,dot=ux*vx+uy*vy;
+  // Upright trunk + downward thigh is zero. Sign is oriented to walking direction.
+  const signed=Math.atan2(cross,dot)*180/Math.PI;
+  hipAngle=direction*(signed>=0?180-signed:-180-signed);
+ }
+ return [hipAngle,kneeInterior===null?null:180-kneeInterior,ankleInterior===null?null:90-ankleInterior];
+}
+function drawJointOverlay(points,direction){
  const ctx=reviewCtx,w=reviewCanvas.width,h=reviewCanvas.height;
  const colors=['#12b7c9','#35a66d','#925bd7'];
  const segments=[[0,1],[1,2],[2,3],[3,4]];
@@ -326,21 +350,18 @@ function drawJointOverlay(points){
   {name:'Rodilla',indices:[1,2,3],color:colors[1],offset:1},
   {name:'Tobillo',indices:[2,3,4],color:colors[2],offset:1}
  ];
- const results=[];
- for(const spec of specs){
-  const [a,b,c]=spec.indices.map(i=>points[i]);
-  const interior=geometricAngle(a,b,c);
-  if(interior===null){results.push(spec.name+': —');continue;}
-  const value=spec.name==='Tobillo'?interior:180-interior;
-  const label=spec.name==='Tobillo'?'Tobillo (geom.)':spec.name;
-  results.push(label+': '+value.toFixed(1)+'°');
+ const values=jointAngleValues(points,direction),results=[];
+ for(let i=0;i<specs.length;i++){
+  const spec=specs[i],[a,b,c]=spec.indices.map(j=>points[j]),value=values[i];
+  if(value===null){results.push(spec.name+': —');continue;}
+  results.push(spec.name+': '+(value>0?'+':'')+value.toFixed(1)+'°');
   const bx=b.x*w,by=b.y*h,thetaA=Math.atan2(a.y-b.y,a.x-b.x),thetaC=Math.atan2(c.y-b.y,c.x-b.x);
-  let sweep=((thetaC-thetaA+Math.PI*3)%(Math.PI*2))-Math.PI;
+  const sweep=((thetaC-thetaA+Math.PI*3)%(Math.PI*2))-Math.PI;
   const radius=Math.max(15,Math.min(w,h)/19);
   ctx.beginPath();ctx.arc(bx,by,radius,thetaA,thetaA+sweep,sweep<0);
   ctx.strokeStyle=spec.color;ctx.lineWidth=Math.max(3,w/240);ctx.stroke();
   const tx=bx+(spec.offset<0?-1:1)*radius*1.4,ty=by-radius*.9;
-  const txt=value.toFixed(0)+'°';
+  const txt=(value>0?'+':'')+value.toFixed(0)+'°';
   ctx.font='bold '+Math.max(13,Math.round(w/53))+'px system-ui';
   const tw=ctx.measureText(txt).width;
   ctx.fillStyle='rgba(255,255,255,.88)';ctx.fillRect(tx-5,ty-18,tw+10,24);
@@ -370,7 +391,7 @@ async function drawReview(){
   reviewCtx.drawImage(v,0,0,reviewCanvas.width,reviewCanvas.height);
   const angleReadout=document.getElementById('angle-readout');
   if(document.getElementById('show-joint-angles').checked){
-   angleReadout.textContent=drawJointOverlay(rec.points||[])+' · Ángulos 2D exploratorios; tobillo sin calibración neutra.';
+   angleReadout.textContent=drawJointOverlay(rec.points||[],walkingDirection(records))+' · Ángulos 2D exploratorios; tobillo con neutro geométrico de 90°.';
   }else angleReadout.textContent='';
   const selected=Number(document.getElementById('review-point').value);
   (rec.points||[]).forEach((p,i)=>{
