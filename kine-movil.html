@@ -356,9 +356,23 @@ function drawJointOverlay(points,direction){
   if(value===null){results.push(spec.name+': —');continue;}
   results.push(spec.name+': '+(value>0?'+':'')+value.toFixed(1)+'°');
   const bx=b.x*w,by=b.y*h,thetaA=Math.atan2(a.y-b.y,a.x-b.x),thetaC=Math.atan2(c.y-b.y,c.x-b.x);
-  const sweep=((thetaC-thetaA+Math.PI*3)%(Math.PI*2))-Math.PI;
   const radius=Math.max(15,Math.min(w,h)/19);
-  ctx.beginPath();ctx.arc(bx,by,radius,thetaA,thetaA+sweep,sweep<0);
+  if(i===2){
+   // Anterior ankle convention: neutral is 90° between upward tibia and forward foot.
+   // Show the 90° reference and the deviation from it, not the raw interior angle.
+   const forward=direction||Math.sign(c.x-b.x)||1;
+   const tibiaDown=Math.atan2(b.y-a.y,b.x-a.x);
+   const neutralFoot=tibiaDown-forward*Math.PI/2;
+   ctx.beginPath();ctx.moveTo(bx,by);
+   ctx.lineTo(bx+Math.cos(neutralFoot)*radius*1.7,by+Math.sin(neutralFoot)*radius*1.7);
+   ctx.setLineDash([5,5]);ctx.strokeStyle='#ffffff';ctx.lineWidth=Math.max(4,w/230);ctx.stroke();
+   ctx.strokeStyle='#925bd7';ctx.lineWidth=Math.max(2,w/360);ctx.stroke();ctx.setLineDash([]);
+   const sweep=((thetaC-neutralFoot+Math.PI*3)%(Math.PI*2))-Math.PI;
+   ctx.beginPath();ctx.arc(bx,by,radius,neutralFoot,neutralFoot+sweep,sweep<0);
+  }else{
+   const sweep=((thetaC-thetaA+Math.PI*3)%(Math.PI*2))-Math.PI;
+   ctx.beginPath();ctx.arc(bx,by,radius,thetaA,thetaA+sweep,sweep<0);
+  }
   ctx.strokeStyle=spec.color;ctx.lineWidth=Math.max(3,w/240);ctx.stroke();
   const tx=bx+(spec.offset<0?-1:1)*radius*1.4,ty=by-radius*.9;
   const txt=(value>0?'+':'')+value.toFixed(0)+'°';
